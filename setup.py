@@ -280,8 +280,8 @@ skbuild.setup(
 # The wrong egg-link comes when find_packages(where="src") finds a list of packages in
 # scikit-build version of setup(). No clue why...
 
-if CMD == "develop":
-    print("Run in DEVELOP mode")
+if CMD == "develop" or CMD == "install":
+    print("Run in DEVELOP or INSTALL mode")
     setuptools_setup(  # use setuptools version of setup
         name="xtgeo",
         use_scm_version={"root": src(""), "write_to": src("src/xtgeo/_theversion.py")},
