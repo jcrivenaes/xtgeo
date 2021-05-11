@@ -192,6 +192,7 @@ grd3d_get_randomline(double *xvec,
     double value, *p_dummy_v = NULL;
 
     logger_info(LI, FI, FU, "Entering routine %s", FU);
+    logger_info(LI, FI, FU, "Compute randomline (C code)");
 
     zsam = (zmax - zmin) / (nzsam - 1);
 

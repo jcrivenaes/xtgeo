@@ -51,6 +51,11 @@ def get_randomline(
     if zmax is None:
         zmax = self._tmp["basd"].values.max()
 
+    self._tmp["topi"].to_file("topi.gri")
+    self._tmp["topj"].to_file("topj.gri")
+    self._tmp["basi"].to_file("basi.gri")
+    self._tmp["basj"].to_file("basj.gri")
+
     nzsam = int((zmax - zmin) / float(zincrement)) + 1
     nsamples = xcoords.shape[0] * nzsam
 
