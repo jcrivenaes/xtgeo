@@ -1,6 +1,9 @@
 """Setup common stuff for pytests."""
 import os
 import platform
+import subprocess
+import pathlib
+import shutil
 import pytest
 
 ALLPLATF = set("darwin linux windows".split())
@@ -94,3 +97,39 @@ def testpath(request):
         testdatapath = environ_path
 
     return testdatapath
+
+
+@pytest.fixture(scope="session")
+def files_setup_teardown():
+    print("XXX DOIING BULD UP")
+    yield None
+    print("XXX TEARDOWN")
+
+
+def pytest_configure(config):
+    print("XTGEO: Configure test session...")
+    current = pathlib.Path(".")
+    tmpdir = current / "TMP"
+    tmpdir.mkdir(parents=True, exist_ok=True)
+
+    testdir = pathlib.Path("..") / "xtgeo-testdata"
+    if testdir.exists():
+        print("Using existing testdata...")
+    else:
+        print("Cloning testdata...")
+        subprocess.check_call(
+            [
+                "git",
+                "clone",
+                "--depth",
+                "1",
+                "https://github.com/equinor/xtgeo-testdata",
+            ],
+            cwd="..",
+        )
+
+
+def pytest_unconfigure(config):
+    print("STOPP: ending session by deleting TMP and testdata")
+    shutil.rmtree("TMP")
+    shutil.rmtree("../xtgeo-testdata")
