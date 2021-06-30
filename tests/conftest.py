@@ -99,13 +99,6 @@ def testpath(request):
     return testdatapath
 
 
-@pytest.fixture(scope="session")
-def files_setup_teardown():
-    print("XXX DOIING BULD UP")
-    yield None
-    print("XXX TEARDOWN")
-
-
 def pytest_configure(config):
     print("XTGEO: Configure test session...")
     current = pathlib.Path(".")
