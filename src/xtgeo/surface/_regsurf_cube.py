@@ -1,6 +1,8 @@
 """Regular surface vs Cube"""
 
 
+from warnings import warn
+
 import numpy as np
 
 import xtgeo
@@ -24,6 +26,7 @@ def slice_cube(
 
     if algorithm == 2:
         if snapxy:
+            logger.debug("Slicing cube algorithm 2, with snapxy active...")
             return _slice_cube_v2(
                 self,
                 cube,
@@ -32,6 +35,7 @@ def slice_cube(
                 mask=mask,
                 deadtraces=deadtraces,
             )
+        logger.debug("Slicing cube algorithm 2, with resample...")
         return _slice_cube_v2_resample(
             self,
             cube,
@@ -185,20 +189,45 @@ def _slice_cube_v2_resample(
     do an inverse sampling
     """
 
-    scube = xtgeo.surface_from_cube(cube, 0)
+    initial_count = self.nactive if self.nactive is not None else 0
 
-    if self.compare_topology(scube, strict=False):
+    surface_from_cube = xtgeo.surface_from_cube(cube, 0)
+
+    if self.compare_topology(surface_from_cube, strict=False):
+        logger.debug("The cube and input surface matches")
         return _slice_cube_v2(self, cube, zsurf, sampling, mask, deadtraces)
 
-    scube.resample(self)
+    logger.debug("Resample surface...")
+    logger.debug("Active input nodes (instance): %s", self.nactive)
+    logger.debug("Active surface from cube nodes: %s", surface_from_cube.nactive)
+    surface_from_cube.resample(self)
+    logger.debug(
+        "Active after resample nodes (surf from cube): %s", surface_from_cube.nactive
+    )
+    logger.debug(
+        "Average of surface_from_cube after resample: %s",
+        surface_from_cube.values.mean(),
+    )
+
+    print(self)
+    print(surface_from_cube)
+
+    if surface_from_cube.nactive == 0:
+        warn(
+            "No surface values will sampled from cube. This is usually caused by "
+            "spatial misalignment between cube and surface, or that the input surface "
+            "only have masked (undefined) values.",
+            UserWarning,
+        )
+        return -5  #  -5 means no coverage
 
     zcube = None
     if zsurf:
-        zcube = scube.copy()
+        zcube = surface_from_cube.copy()
         zcube.resample(zsurf)
 
     istat = _slice_cube_v2(
-        scube,
+        surface_from_cube,
         cube=cube,
         zsurf=zcube,
         sampling=sampling,
@@ -207,6 +236,11 @@ def _slice_cube_v2_resample(
     )
 
     # sample back
-    self.resample(scube, mask=mask)
+    self.resample(surface_from_cube, mask=mask)
+
+    updated_count = self.nactive if self.nactive is not None else 0
+
+    if updated_count <= 0.1 * initial_count:
+        return -4
 
     return istat

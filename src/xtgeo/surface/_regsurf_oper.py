@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import numbers
 from typing import Any
+from warnings import warn
 
 import numpy as np
 import numpy.ma as ma
@@ -115,46 +116,73 @@ def _check_other(self, other):
 
 
 def resample(self, other, mask=True, sampling="bilinear"):
-    """Resample from other surface object to this surf."""
+    """Resample from other surface object to this surf.
+
+    The interpolation algorithm in resample is bilinear interpolation. The
+    topolopogy of the surface (map definitions, rotation, ...) will not change,
+    only the map values. Areas with undefined nodes in ``other`` will become
+    undefined in the instance if mask is True; othewise they will be kept as original
+    (in the self instance).
+
+    Args:
+        other (RegularSurface): Surface to resample from.
+        mask (bool): If True (default) nodes outside 'other' or masked in other will
+            be made undefined, if False then values in these areas will be kept as
+            original.
+        sampling (str): Either 'bilinear' interpolation (default) or, 'nearest' for
+            nearest node. The latter can be useful for resampling discrete maps.
+
+    """
 
     logger.info("Resampling...")
+    logger.debug("Average of instance prior to resample: %s", self.values.mean())
 
-    # a special case occur of the maps have same topology, but
-    # different masks
+    initial_count = self.nactive
+
     if self.compare_topology(other, strict=False):
+        # a special case occur of the maps have same topology, but different masks
         self.values = other.values.copy()
-        return
 
-    svalues = np.ma.filled(self.values, fill_value=xtgeo.UNDEF)
-    ovalues = np.ma.filled(other.values, fill_value=xtgeo.UNDEF)
+    else:
+        svalues = np.ma.filled(self.values, fill_value=xtgeo.UNDEF)
+        ovalues = np.ma.filled(other.values, fill_value=xtgeo.UNDEF)
 
-    _cxtgeo.surf_resample(
-        other._ncol,
-        other._nrow,
-        other._xori,
-        other._xinc,
-        other._yori,
-        other._yinc,
-        other._yflip,
-        other._rotation,
-        ovalues,
-        self._ncol,
-        self._nrow,
-        self._xori,
-        self._xinc,
-        self._yori,
-        self._yinc,
-        self._yflip,
-        self._rotation,
-        svalues,
-        0 if not mask else 1,
-        2 if sampling == "nearest" else 0,
-    )
+        _cxtgeo.surf_resample(
+            other._ncol,
+            other._nrow,
+            other._xori,
+            other._xinc,
+            other._yori,
+            other._yinc,
+            other._yflip,
+            other._rotation,
+            ovalues,
+            self._ncol,
+            self._nrow,
+            self._xori,
+            self._xinc,
+            self._yori,
+            self._yinc,
+            self._yflip,
+            self._rotation,
+            svalues,
+            0 if not mask else 1,
+            2 if sampling == "nearest" else 0,
+        )
 
-    self.values = np.ma.masked_greater(svalues, xtgeo.UNDEF_LIMIT)
+        self.values = np.ma.masked_greater(svalues, xtgeo.UNDEF_LIMIT)
 
-    self.set_values1d(svalues)
-    self._filesrc = "Resampled"
+        self.set_values1d(svalues)
+        self._filesrc = "Resampled"
+
+    # final checks
+    if self.nactive == 0 and initial_count > 0:
+        warn(
+            "There are no active nodes in surface after resampling i.e. 'empty map'",
+            UserWarning,
+        )
+
+    logger.debug("Average of instance after resample: %s", self.values.mean())
 
 
 def distance_from_point(self, point=(0, 0), azimuth=0.0):
@@ -628,4 +656,5 @@ def operation_polygons_v2(self, poly, value: float | Any, opname="add", inside=T
     else:
         raise KeyError(f"The opname={opname} is not one of {VALID_OPER_POLYS}")
 
+    self.values = result.values
     self.values = result.values

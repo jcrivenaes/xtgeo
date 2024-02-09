@@ -488,6 +488,25 @@ def test_cube_slice_auto4d_data(tmpdir, generate_plot):
         )
 
 
+def test_cube_slice_data_offset_gives_emptymap(tmp_path):
+    """Do cube slice where input map is misaligned, hence the slice is empty .
+
+    This should produce an empty map, with approriate warnings for the end user.
+    """
+
+    xs1 = xtgeo.surface_from_file(XTOP1, fformat="gri")
+
+    # translate map so it becomes offset
+    xs1.xori += 500000
+
+    kube1 = xtgeo.cube_from_file(XCUB1)
+    xs1.slice_cube(kube1, sampling="trilinear", mask=True)
+
+    outfile = tmp_path / "possibly_empty.ijxyz"
+    xs1.to_file(outfile, fformat="ijxyz")
+    print("See ", outfile)
+
+
 def test_cube_slice_w_ignore_dead_traces_nearest(tmpdir, generate_plot):
     """Get cube slice nearest aka Auto4D input, with scrambled data with
     dead traces, various YFLIP cases, ignore dead traces."""
