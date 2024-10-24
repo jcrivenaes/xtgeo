@@ -11,6 +11,7 @@ import numpy as np
 from xtgeo import _cxtgeo
 from xtgeo.common import XTGeoDialog, null_logger
 from xtgeo.common.constants import UNDEF_LIMIT
+from xtgeo.roxutils._roxar_loader import roxar_grids
 from xtgeo.roxutils.roxutils import RoxUtils
 
 xtg = XTGeoDialog()
@@ -18,12 +19,9 @@ xtg = XTGeoDialog()
 logger = null_logger(__name__)
 
 if TYPE_CHECKING:
-    import contextlib
-
     from xtgeo.grid3d.grid import Grid
+    from xtgeo.roxutils._roxar_loader import RoxarTypeGrid3D
 
-    with contextlib.suppress(ImportError):
-        import roxar
 
 # self is Grid() instance
 
@@ -47,13 +45,13 @@ def import_grid_roxapi(
     return _import_grid_roxapi(rox, gname, realisation, info)
 
 
-def _display_roxapi_grid_info(roxgrid: roxar.grids.Grid3D) -> None:
+def _display_roxapi_grid_info(roxgrid: RoxarTypeGrid3D) -> None:
     """Push info to screen (mostly for debugging), experimental."""
 
     indexer = roxgrid.grid_indexer
     ncol, nrow, _ = indexer.dimensions
 
-    xtg.say("ROXAPI with support for CornerPointGeometry")
+    xtg.say("ROXAPI with support for CornerPointGridGeometry")
     geom = roxgrid.get_geometry()
     defined_cells = geom.get_defined_cells()
     xtg.say(f"Defined cells \n{defined_cells}")
@@ -103,7 +101,7 @@ def _import_grid_roxapi(
     return result
 
 
-def _convert_to_xtgeo_grid(roxgrid: roxar.grids.Grid3D, gname: str) -> dict[str, Any]:
+def _convert_to_xtgeo_grid(roxgrid: RoxarTypeGrid3D, gname: str) -> dict[str, Any]:
     """Convert from roxar CornerPointGeometry to xtgeo, version 2 using _xtgformat=2."""
     indexer = roxgrid.grid_indexer
 
@@ -204,10 +202,6 @@ def _export_grid_cornerpoint_roxapi_v1(
     self: Grid, rox: RoxUtils, gname: str, realisation: int, info: bool
 ) -> None:
     """Convert xtgeo geometry to pillar spec in ROXAPI and store."""
-    try:
-        from roxar.grids import CornerPointGridGeometry as CPG
-    except ImportError:
-        raise RuntimeError("Cannot load Roxar module")
 
     logger.info("Load grid via CornerPointGridGeometry...")
 
@@ -215,7 +209,7 @@ def _export_grid_cornerpoint_roxapi_v1(
     grid_model.set_empty(realisation)
     grid = grid_model.get_grid(realisation)
 
-    geom = CPG.create(self.dimensions)
+    geom = roxar_grids.CornerPointGridGeometry.create(self.dimensions)
 
     logger.info(geom)
     scopy = self.copy()
@@ -272,16 +266,12 @@ def _export_grid_cornerpoint_roxapi_v2(
     self: Grid, rox: RoxUtils, gname: str, realisation: int, info: bool
 ) -> None:
     """Convert xtgeo geometry to pillar spec in ROXAPI and store _xtgformat=2."""
-    try:
-        from roxar.grids import CornerPointGridGeometry as CPG
-    except ImportError:
-        raise RuntimeError("Cannot load Roxar module")
 
     grid_model = rox.project.grid_models.create(gname)
     grid_model.set_empty(realisation)
     grid = grid_model.get_grid(realisation)
 
-    geom = CPG.create(self.dimensions)
+    geom = roxar_grids.CornerPointGridGeometry.create(self.dimensions)
 
     scopy = self.copy()
     scopy.make_zconsistent()
@@ -332,7 +322,7 @@ def _export_grid_cornerpoint_roxapi_v2(
     del scopy
 
 
-def _set_subgrids(self: Grid, rox: RoxUtils, grid: roxar.grids.Grid3D) -> None:
+def _set_subgrids(self: Grid, rox: RoxUtils, grid: RoxarTypeGrid3D) -> None:
     """Export the subgrid index (zones) to Roxar API.
 
     From roxar API:
