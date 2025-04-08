@@ -221,9 +221,9 @@ def test_sample_grid3d_layer_num_threads(
     # somehwat flaky for many threads (race condition?), so we only check for < half
     # of the threads available.
     if num_threads < available_threads / 2:
-        assert np.array_equal(top, keep_top_store["keep_top"]), (
-            f"Mismatch with {num_threads} threads"
-        )
+        assert np.array_equal(
+            top, keep_top_store["keep_top"]
+        ), f"Mismatch with {num_threads} threads"
 
 
 @pytest.mark.parametrize(
@@ -287,3 +287,36 @@ def test_get_z_from_xy(get_drogondata):
         y = np.random.uniform(ymin, ymax)
         regsurf_cpp.get_z_from_xy(x, y)
     logger.debug("End random points loop")
+
+
+@pytest.mark.parametrize(
+    "x, y, expected",
+    [
+        (462054.86, 5939498.90, (174, 274)),  # at NE edge, slightly inside
+        (462054.86, 5939499.00, (-1, -1)),  # at NE edge, slightly outside
+        (467544.00, 5929990.00, (174, 0)),  # at SE edge, slightly inside
+        (467545.00, 5929990.00, (-1, -1)),  # at SE edge, slightly outside
+        (461500.00, 5926500.10, (0, 0)),  # at SW edge, slightly inside
+        (461500.00, 5926499.00, (-1, -1)),  # at SW edge, slightly outside
+        (456010.50, 5936008.96, (0, 274)),  # at NW edge, slightly inside
+        (456009.50, 5936008.96, (-1, -1)),  # at NW edge, slightly inside
+    ],
+)
+def test_get_ij_from_xy(get_drogondata, x, y, expected):
+    _, _, _, srf = get_drogondata
+
+    surf = srf.copy()
+
+    regsurf_cpp = _internal.regsurf.RegularSurface(surf)
+    ij = regsurf_cpp.get_ij_from_xy(x, y)
+
+    assert ij == expected
+
+
+@functimer(output="info")
+def test_get_template_surface_from_grid(get_drogondata):
+    grid, _, _, _ = get_drogondata
+
+    grid_cpp = _internal.grid3d.Grid(grid)
+
+    regsurf = _internal.regsurf.create_template_regsurf_from_grid(grid_cpp, 1.0)

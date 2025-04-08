@@ -3,6 +3,7 @@
 
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
+#include <Eigen/Dense>
 #include <array>
 #include <cmath>
 #include <vector>
@@ -121,6 +122,15 @@ find_rect_corners_from_center(const double x,
                               const double yinc,
                               const double rot);
 
+bool
+does_line_segment_intersect_quad_internal(const Eigen::Vector3d &p1,
+                                          const Eigen::Vector3d &p2,
+                                          const std::array<Eigen::Vector3d, 4> &quad);
+
+bool
+does_line_segment_intersect_quad(const py::array_t<double> &p1,
+                                 const py::array_t<double> &p2,
+                                 const py::array_t<double> &quad);
 // functions exposed to Python:
 inline void
 init(py::module &m)
@@ -149,6 +159,11 @@ init(py::module &m)
                    py::arg("x"), py::arg("y"), py::arg("p1"), py::arg("p2"),
                    py::arg("p3"), py::arg("p4"),
                    py::arg("tolerance") = numerics::TOLERANCE);
+    m_geometry.def("does_line_segment_intersect_quad",
+                   &does_line_segment_intersect_quad,
+                   "Check if a line segment intersects a quadrilateral in 3D space",
+                   py::arg("p1"), py::arg("p2"), py::arg("quad"),
+                   "Return True if the line segment intersects the quadrilateral");
 }
 }  // namespace xtgeo::geometry
 

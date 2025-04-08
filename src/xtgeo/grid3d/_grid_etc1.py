@@ -570,7 +570,7 @@ def get_xyz(
 
     # note: using _internal here is 2-3 times faster than using the former cxtgeo!
     grid_cpp = _internal.grid3d.Grid(self)
-    xv, yv, zv = grid_cpp.get_cell_centers(asmasked)
+    xv, yv, zv = grid_cpp.get_cell_centers_eigen(asmasked)
 
     xv = np.ma.masked_invalid(xv)
     yv = np.ma.masked_invalid(yv)

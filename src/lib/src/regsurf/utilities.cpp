@@ -286,4 +286,39 @@ get_z_from_xy(const RegularSurface &regsurf,
 
 }  // get_z_from_xy
 
+std::tuple<int, int>
+get_ij_from_xy(const RegularSurface &regsurf,
+               const double x,
+               const double y,
+               const double tolerance)
+{
+    // Convert the angle to radians
+    double angle_rad = regsurf.rotation * M_PI / 180.0;
+
+    // Transform the point to grid-relative coordinates
+    Point p = { x, y, 0 };
+    Point p_rel = inverse_rotate_and_translate(
+      p, regsurf.xori, regsurf.yori, std::cos(angle_rad), std::sin(angle_rad));
+
+    // Find the indices of the nearest grid node
+    int i_temp = static_cast<int>(std::round(p_rel.x / regsurf.xinc));
+    int j_temp = static_cast<int>(std::round(p_rel.y / regsurf.yinc));
+
+    // Check if the point is inside the grid bounds
+    bool is_inside = geometry::is_xy_point_in_quadrilateral(
+      p_rel.x, p_rel.y, { 0.0, 0.0, 0.0 },
+      { (regsurf.ncol - 1) * regsurf.xinc, 0.0, 0.0 },
+      { (regsurf.ncol - 1) * regsurf.xinc, (regsurf.nrow - 1) * regsurf.yinc, 0.0 },
+      { 0.0, (regsurf.nrow - 1) * regsurf.yinc, 0.0 }, tolerance);
+
+    // If the point is outside the grid, return invalid indices (-1, -1)
+    if (!is_inside || i_temp < 0 || i_temp >= static_cast<int>(regsurf.ncol) ||
+        j_temp < 0 || j_temp >= static_cast<int>(regsurf.nrow)) {
+        return { -1, -1 };
+    }
+
+    // Return the valid indices
+    return { i_temp, j_temp };
+}
+
 }  // namespace xtgeo::regsurf

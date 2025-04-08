@@ -23,6 +23,9 @@ std::tuple<py::array_t<double>, py::array_t<double>, py::array_t<double>>
 get_cell_centers(const Grid &grid_cpp, const bool asmasked = false);
 
 std::tuple<py::array_t<double>, py::array_t<double>, py::array_t<double>>
+get_cell_centers_eigen(const Grid &grid_cpp, const bool asmasked = false);
+
+std::tuple<py::array_t<double>, py::array_t<double>, py::array_t<double>>
 get_height_above_ffl(const Grid &grid_cpp,
                      const py::array_t<float> &ffl,
                      const size_t option);
@@ -48,6 +51,9 @@ get_depth_in_cell(const double x,
                   const CellCorners &corners,
                   int option);
 
+bool
+is_cell_convex(const CellCorners &corners);
+
 py::array_t<int8_t>
 get_gridprop_value_between_surfaces(const Grid &grd,
                                     const regsurf::RegularSurface &top,
@@ -72,6 +78,34 @@ adjust_boxgrid_layers_from_regsurfs(Grid &grd,
                                     const std::vector<regsurf::RegularSurface> &rsurfs,
                                     const double tolerance = numerics::TOLERANCE);
 
+// std::tuple<py::array_t<int>, py::array_t<int>, py::array_t<int>>
+// get_cells_penetrated_by_points(const Grid &grd, const xyz::Polygon &points);
+
+std::tuple<py::array_t<int>, py::array_t<int>, py::array_t<int>>
+get_cells_penetrated_by_trajectory(const Grid &grd, const xyz::Polygon &trajectory);
+
+bool
+is_point_inside_cell(const CellCorners &corners, const xyz::Point &p_input);
+
+bool
+is_line_segment_inside_cell(const CellCorners &cell,
+                            const xyz::Point &p1,
+                            const xyz::Point &p2);
+
+Grid
+extract_onelayer_grid(const Grid &original_grid);
+
+std::tuple<xyz::Point, xyz::Point>
+get_bounding_box(const Grid &grid);
+
+void
+sample_grid_indices_from_polyline(const Grid &grid,
+                                  const xyz::Polygon &poly,
+                                  const Grid &onelayer_grid,
+                                  const regsurf::RegularSurface &i_top,
+                                  const regsurf::RegularSurface &j_top,
+                                  const regsurf::RegularSurface &i_bot,
+                                  const regsurf::RegularSurface &j_bot);
 inline void
 init(py::module &m)
 {
@@ -92,6 +126,8 @@ init(py::module &m)
 
       .def("get_cell_centers", &get_cell_centers,
            "Compute the cells centers coordinates as 3 arrays")
+      .def("get_cell_centers_eigen", &get_cell_centers_eigen,
+           "Compute the cells centers coordinates as 3 arrays (alt)")
       .def("get_gridprop_value_between_surfaces", &get_gridprop_value_between_surfaces,
            "Make a property that is one if cell center is between two surfaces.")
       .def("get_height_above_ffl", &get_height_above_ffl,
@@ -103,6 +139,13 @@ init(py::module &m)
       .def("adjust_boxgrid_layers_from_regsurfs", &adjust_boxgrid_layers_from_regsurfs,
            "Adjust layers in a boxgrid given a list of regular surfaces.",
            py::arg("rsurfs"), py::arg("tolerance") = numerics::TOLERANCE)
+      .def("get_cells_penetrated_by_trajectory", &get_cells_penetrated_by_trajectory,
+           "Return cell indices that are penetrated by trajectory.")
+      //  .def("get_cells_penetrated_by_points", &get_cells_penetrated_by_points,
+      //       "Return cell indices that are penetrated by points.")
+      .def("extract_onelayer_grid", &extract_onelayer_grid, "Get a a onelayer grid")
+      .def("sample_grid_indices_from_polyline", &sample_grid_indices_from_polyline, "x")
+      .def("get_bounding_box", &get_bounding_box, "Get bounding box for grid geometry")
 
       ;
 
@@ -121,7 +164,13 @@ init(py::module &m)
       .def_readonly("lower_se", &CellCorners::lower_se)
       .def_readonly("lower_nw", &CellCorners::lower_nw)
       .def_readonly("lower_ne", &CellCorners::lower_ne)
-      .def("to_numpy", &CellCorners::to_numpy);
+      .def("to_numpy", &CellCorners::to_numpy)
+      .def("is_point_inside_cell", &is_point_inside_cell,
+           "Return a bool for a point being inside a cell")
+      .def("is_line_segment_inside_cell", &is_line_segment_inside_cell,
+           "Return a bool for a line segment being inside a cell")
+
+      ;
 
     m_grid3d.def("arrange_corners", &CellCorners::arrange_corners,
                  "Arrange the corners in a single array for easier access.");
@@ -132,10 +181,13 @@ init(py::module &m)
                  "Determine if a XY point is inside a cell, top or base.");
     m_grid3d.def("get_depth_in_cell", &get_depth_in_cell,
                  "Determine the interpolated cell face Z from XY, top or base.");
+    m_grid3d.def("is_cell_convex", &is_cell_convex, "Determine if a cell is convex.");
     m_grid3d.def("process_edges_rmsapi", &process_edges_rmsapi, "Edge prosessing...");
     m_grid3d.def("create_grid_from_cube", &create_grid_from_cube,
                  "Create a 3D grid from a cube specification.", py::arg("cube"),
                  py::arg("use_cell_center") = false, py::arg("flip") = 1);
+    m_grid3d.def("is_line_segment_inside_cell", &is_line_segment_inside_cell,
+                 "Return a bool for a line segment being inside a cell");
 }
 
 }  // namespace xtgeo::grid3d

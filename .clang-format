@@ -1,4 +1,5 @@
 ---
+# Langauge: Cpp
 # Language: C
 # BasedOnStyle:  Mozilla
 AccessModifierOffset: -4
@@ -73,7 +74,8 @@ IncludeCategories:
     Priority:        5
 IncludeIsMainRegex: '(Test)?$'
 IndentCaseLabels: true
-IndentPPDirectives: None
+IndentPPDirectives: BeforeHash
+# IndentPragmas: true
 IndentWidth:     4
 IndentWrappedFunctionNames: false
 JavaScriptQuotes: Leave
@@ -98,6 +100,7 @@ PointerAlignment: Right
 #   - Delimiter:       pb
 #     Language:        TextProto
 #     BasedOnStyle:    google
+PPIndentWidth: 4
 ReflowComments:  true
 SortIncludes:    true
 SortUsingDeclarations: true

@@ -1,5 +1,6 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/numpy.h>
+#include <Eigen/Dense>
 #include <algorithm>
 #include <cstddef>
 #include <tuple>
@@ -8,7 +9,6 @@
 #include <xtgeo/numerics.hpp>
 #include <xtgeo/types.hpp>
 #include <xtgeo/xtgeo.h>
-
 namespace py = pybind11;
 
 namespace xtgeo::grid3d {
@@ -86,6 +86,67 @@ get_cell_centers(const Grid &grd, const bool asmasked)
                   0.125 *
                   (crn.upper_sw.z + crn.upper_se.z + crn.upper_nw.z + crn.upper_ne.z +
                    crn.lower_sw.z + crn.lower_se.z + crn.lower_nw.z + crn.lower_ne.z);
+            }
+        }
+    }
+    return std::make_tuple(xmid, ymid, zmid);
+}
+
+static xyz::Point
+get_cell_center_eigen(const CellCorners &corners)
+{
+    // Create 8x3 matrix with corner coordinates
+    Eigen::Matrix<double, 8, 3> corner_matrix;
+
+    // Fill matrix with corner coordinates
+    corner_matrix << corners.upper_sw.x, corners.upper_sw.y, corners.upper_sw.z,
+      corners.upper_se.x, corners.upper_se.y, corners.upper_se.z, corners.upper_nw.x,
+      corners.upper_nw.y, corners.upper_nw.z, corners.upper_ne.x, corners.upper_ne.y,
+      corners.upper_ne.z, corners.lower_sw.x, corners.lower_sw.y, corners.lower_sw.z,
+      corners.lower_se.x, corners.lower_se.y, corners.lower_se.z, corners.lower_nw.x,
+      corners.lower_nw.y, corners.lower_nw.z, corners.lower_ne.x, corners.lower_ne.y,
+      corners.lower_ne.z;
+
+    // Compute center by averaging all corners
+    Eigen::Vector3d center = corner_matrix.colwise().mean();
+
+    return xyz::Point{ center(0), center(1), center(2) };
+}
+
+/*
+ * Get cell centers for a grid.
+ *
+ * @param grd Grid struct
+ * @param asmasked Process grid cells as masked (return NaN for inactive cells)
+ * @return Arrays with the X, Y, Z coordinates of the cell centers
+ */
+std::tuple<py::array_t<double>, py::array_t<double>, py::array_t<double>>
+get_cell_centers_eigen(const Grid &grd, const bool asmasked)
+{
+    pybind11::array_t<double> xmid({ grd.ncol, grd.nrow, grd.nlay });
+    pybind11::array_t<double> ymid({ grd.ncol, grd.nrow, grd.nlay });
+    pybind11::array_t<double> zmid({ grd.ncol, grd.nrow, grd.nlay });
+    auto xmid_ = xmid.mutable_unchecked<3>();
+    auto ymid_ = ymid.mutable_unchecked<3>();
+    auto zmid_ = zmid.mutable_unchecked<3>();
+    auto actnumsv_ = grd.actnumsv.unchecked<3>();
+
+    for (size_t i = 0; i < grd.ncol; i++) {
+        for (size_t j = 0; j < grd.nrow; j++) {
+            for (size_t k = 0; k < grd.nlay; k++) {
+                if (asmasked && actnumsv_(i, j, k) == 0) {
+                    xmid_(i, j, k) = std::numeric_limits<double>::quiet_NaN();
+                    ymid_(i, j, k) = std::numeric_limits<double>::quiet_NaN();
+                    zmid_(i, j, k) = std::numeric_limits<double>::quiet_NaN();
+                    continue;
+                }
+                auto crn = grid3d::get_cell_corners_from_ijk(grd, i, j, k);
+
+                xyz::Point result = get_cell_center_eigen(crn);
+
+                xmid_(i, j, k) = result.x;
+                ymid_(i, j, k) = result.y;
+                zmid_(i, j, k) = result.z;
             }
         }
     }
@@ -235,6 +296,54 @@ create_grid_from_cube(const cube::Cube &cube,
     }
 
     return std::make_tuple(coordsv, zcornsv, actnumsv);
+}
+
+/** @brief Get bounding box for 3D grid
+ * @param Grid input grid
+ * @return A tuple of two points, lower_left (shallow) and upper_right (deep)
+ */
+
+std::tuple<xyz::Point, xyz::Point>
+get_bounding_box(const Grid &grid)
+{
+    // Initialize min and max values
+    double xmin = std::numeric_limits<double>::max();
+    double xmax = std::numeric_limits<double>::lowest();
+    double ymin = std::numeric_limits<double>::max();
+    double ymax = std::numeric_limits<double>::lowest();
+    double zmin = std::numeric_limits<double>::max();
+    double zmax = std::numeric_limits<double>::lowest();
+
+    Grid onelayer_grid = extract_onelayer_grid(grid);
+
+    // Step 2: Loop through all cells and find min/max values
+    for (size_t i = 0; i < grid.ncol; i++) {
+        for (size_t j = 0; j < grid.nrow; j++) {
+            // Get the corners of the cell
+            CellCorners corners = get_cell_corners_from_ijk(onelayer_grid, i, j, 0);
+
+            // Loop through the 8 corners to find min/max values
+            std::array<xyz::Point, 8> corner_points = {
+                corners.upper_sw, corners.upper_se, corners.upper_nw, corners.upper_ne,
+                corners.lower_sw, corners.lower_se, corners.lower_nw, corners.lower_ne
+            };
+
+            for (const auto &point : corner_points) {
+                xmin = std::min(xmin, point.x);
+                xmax = std::max(xmax, point.x);
+                ymin = std::min(ymin, point.y);
+                ymax = std::max(ymax, point.y);
+                zmin = std::min(zmin, point.z);
+                zmax = std::max(zmax, point.z);
+            }
+        }
+    }
+
+    // Create points to return
+    xyz::Point lower_left = { xmin, ymin, zmin };
+    xyz::Point upper_right = { xmax, ymax, zmax };
+
+    return std::make_tuple(lower_left, upper_right);
 }
 
 }  // namespace xtgeo::grid3d

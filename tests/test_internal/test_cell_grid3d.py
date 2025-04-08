@@ -29,7 +29,10 @@ def fixture_get_drogondata(testdata_path):
         f"{testdata_path}/3dgrids/drogon/2/geogrid--facies.roff"
     )
 
-    return grid, poro, facies
+    # get well for trajectory
+    well = xtgeo.well_from_file(f"{testdata_path}/wells/drogon/1/55_33-A-4.rmswell")
+
+    return grid, poro, facies, well
 
 
 @pytest.mark.parametrize(
@@ -145,11 +148,30 @@ def test_get_depth_in_cell(testdata_path, x, y, cell, position, expected):
         assert depth == pytest.approx(expected)
 
 
+@pytest.mark.parametrize(
+    "cell, expected",
+    [
+        ((0, 0, 0), False),
+        ((0, 0, 1), False),
+        ((0, 0, 2), True),
+    ],
+)
+def test_is_cell_convex(testdata_path, cell, expected):
+    """Test if a cell gets a convex True status or not."""
+    # Read the banal6 grid
+    grid = xtgeo.grid_from_file(f"{testdata_path}/3dgrids/etc/concave.grdecl")
+
+    grid_cpp = _internal.grid3d.Grid(grid)
+
+    corners = grid_cpp.get_cell_corners_from_ijk(*cell)
+    assert _internal.grid3d.is_cell_convex(corners) is expected
+
+
 @functimer(output="info")
 def test_get_cell_centers(get_drogondata):
     """Test cell centers from a grid; assertions are manually verified in RMS."""
 
-    grid, _, _ = get_drogondata  # total cells 899944
+    grid, _, _, _ = get_drogondata  # total cells 899944
 
     grid_cpp = _internal.grid3d.Grid(grid)
     xcor, ycor, zcor = grid_cpp.get_cell_centers(True)
@@ -184,7 +206,7 @@ def test_get_cell_centers(get_drogondata):
 def test_process_edges_rmsapi(get_drogondata):
     """Test function that process boundary values."""
 
-    grid, _, _ = get_drogondata
+    grid, _, _, _ = get_drogondata
 
     zcv = grid._zcornsv.copy()
 
@@ -220,7 +242,7 @@ def test_process_edges_rmsapi(get_drogondata):
 def test_convert_xtgeo_to_rmsapi(get_drogondata):
     """Test function that convert from xtgeo 3D grid to RMSAPI."""
 
-    grid, _, _ = get_drogondata
+    grid, _, _, _ = get_drogondata
 
     grid_cpp = _internal.grid3d.Grid(grid)
     tpillars, bpillars, zcorners, zmask = grid_cpp.convert_xtgeo_to_rmsapi()
@@ -238,7 +260,7 @@ def test_convert_xtgeo_to_rmsapi(get_drogondata):
 def test_convert_xtgeo_to_rmsapi_warnings(get_drogondata):
     """Test warnings when convert from xtgeo 3D grid to RMSAPI."""
 
-    grid, _, _ = get_drogondata
+    grid, _, _, _ = get_drogondata
 
     # manipulate grid values
     use_grid = grid.copy()
@@ -277,3 +299,233 @@ def test_adjust_box_grid_to_regsurfs():
     grd_cpp = _internal.grid3d.Grid(grid)
     new_zcorns, _active = grd_cpp.adjust_boxgrid_layers_from_regsurfs(surfaces)
     assert new_zcorns[4, 2, :, 1].tolist() == [0.0, 2.0, 4.0, 6.0, 8.0, 10.0]
+
+
+@functimer(output="print")
+def test_get_cells_penetrated_by_trajectory(get_drogondata):
+    grid, _, _, well = get_drogondata
+
+    grd_cpp = _internal.grid3d.Grid(grid)
+
+    # Convert Polygons to numpy array of points
+    df = well.get_dataframe()
+    points = np.column_stack((df["X_UTME"], df["Y_UTMN"], df["Z_TVDSS"]))
+
+    polys = xtgeo.Polygons(points)
+    polys.to_file("x.pol")
+
+    # points = points[-550:-480, :]
+    print(points.shape)
+
+    pol_cpp = _internal.xyz.Polygon(points)
+
+    @functimer(output="print")
+    def cpp_get_cells_penetrated_by_trajectory(grd_cpp, pol_cpp):
+        # this is the C++ function
+        return grd_cpp.get_cells_penetrated_by_trajectory(pol_cpp)
+
+    i, j, k = cpp_get_cells_penetrated_by_trajectory(grd_cpp, pol_cpp)
+
+    cells = np.column_stack((i, j, k))
+    print(cells)
+
+
+@functimer(output="print")
+def test_get_cells_penetrated_by_old_trajectory(get_drogondata):
+    grid, _, _, well = get_drogondata
+    df = well.get_dataframe()
+    points = np.column_stack((df["X_UTME"], df["Y_UTMN"], df["Z_TVDSS"]))
+    p = xtgeo.Points(points)
+
+    @functimer(output="print")
+    def func_get_ijk_from_points(grid, p):
+        return grid.get_ijk_from_points(p, zerobased=True)
+
+    res = func_get_ijk_from_points(grid, p)
+
+    i = res["IX"].to_numpy()
+    j = res["JY"].to_numpy()
+    k = res["KZ"].to_numpy()
+
+    i = i[i < 200000]
+    j = j[j < 200000]
+    k = k[k < 200000]
+    cells = np.column_stack((i, j, k))
+    cells = np.unique(cells, axis=0)
+    print(cells)
+
+
+@functimer(output="print")
+def test_get_cells_penetrated_by_points(get_drogondata):
+    grid, _, _, well = get_drogondata
+
+    grd_cpp = _internal.grid3d.Grid(grid)
+
+    # Convert Polygons to numpy array of points
+    df = well.get_dataframe()
+    points = np.column_stack((df["X_UTME"], df["Y_UTMN"], df["Z_TVDSS"]))
+
+    print(points.shape)
+
+    # points = points[-1400:-200, :]
+    # points = points[-600:-200, :]
+    print(points.shape)
+
+    pol_cpp = _internal.xyz.Polygon(points)
+    i, j, k = grd_cpp.get_cells_penetrated_by_points(pol_cpp)
+
+    i = i[i >= 0]
+    j = j[j >= 0]
+    k = k[k >= 0]
+    print(i)
+    cells = np.column_stack((i, j, k))
+    print(cells)
+    # # Keep only valid cells (where not all values are -1)
+    # mask = ~np.all(cells == -1, axis=1)
+    # valid_cells = cells[mask]
+
+    # print(f"\nNumber of valid cells found: {np.sum(mask)}")
+    # print(f"Valid cells shape: {valid_cells.shape}")
+    # print("Valid cells:\n", valid_cells)
+
+    # # Show some stats about the valid cells
+    # if len(valid_cells) > 0:
+    #     print("\nValid cells statistics:")
+    #     print(f"I range: {valid_cells[:,0].min()} to {valid_cells[:,0].max()}")
+    #     print(f"J range: {valid_cells[:,1].min()} to {valid_cells[:,1].max()}")
+    #     print(f"K range: {valid_cells[:,2].min()} to {valid_cells[:,2].max()}")
+
+
+CORNERS1 = [
+    [0, 0, 0],  # upper_sw
+    [1, 0, 0],  # opper_se
+    [0, 1, 0],  # upper_nw
+    [1, 1, 0],  # upper_ne
+    [0, 0, 1],  # lower_sw
+    [1, 0, 1],  # lower_se
+    [0, 1, 1],  # lower_nw
+    [1, 1, 1],  # lower_ne
+]
+
+CORNERS2 = [  # flipped IJ system
+    [0, 0, 0],
+    [0, 1, 0],
+    [1, 0, 0],
+    [1, 1, 0],
+    [0, 0, 1],
+    [0, 1, 1],
+    [1, 0, 1],
+    [1, 1, 1],
+]
+
+CORNERS3 = [
+    [0.0, 0.0, 0.0],
+    [0.0, 100.0, 0.0],
+    [100.0, 0.0, 0.0],
+    [100.0, 100.0, 0.0],
+    [0.0, 0.0, 1.0],
+    [0.0, 100.0, 1.0],
+    [100.0, 0.0, 1.0],
+    [100.0, 100.0, 1.0],
+]
+
+CORNERS4 = [  # also have a flipped system
+    [461351.493253, 5938298.477428, 1850],
+    [461501.758690, 5938385.850231, 1850],
+    [461440.718409, 5938166.753852, 1850.1],
+    [461582.200838, 5938248.702782, 1850],
+    [461354.611430, 5938300.454809, 1883.246948],
+    [461504.611754, 5938387.700867, 1915.005005],
+    [461443.842986, 5938169.007646, 1904.730957],
+    [461585.338388, 5938250.905010, 1921.021973],
+]
+
+
+@pytest.mark.parametrize(
+    "cellcorners, point, expected",
+    [
+        (CORNERS1, [0.50, 0.50, 0.50], True),
+        (CORNERS1, [0.999, 0.50, 0.50], True),
+        (CORNERS1, [1.50, 0.50, 0.50], False),
+        (CORNERS1, [1.001, 0.50, 0.50], False),
+        (CORNERS1, [0.5, 0.50, 1.0], True),
+        (CORNERS2, [0.50, 0.50, 0.50], True),
+        (CORNERS2, [0.50, 1.0001, 0.50], False),
+        (CORNERS3, [0.1, 0.1, 0.1], True),
+        (CORNERS4, [461467.513586, 5938273.910537, 1850], True),
+        (CORNERS4, [461467.513586, 5938273.910537, 1849.95], False),
+    ],
+)
+def test_is_point_inside_cell(cellcorners, point, expected):
+    """Test if a point being inside a hexahedral cell.
+
+    Args:
+        cellcorners: List of 24 floats representing 8 corners (x,y,z each)
+        point: List of 3 floats representing test point (x,y,z)
+        expected: Expected True or False
+    """
+    corners_input = np.array(cellcorners, dtype=np.float64).flatten()
+
+    corners_cpp = _internal.grid3d.CellCorners(corners_input)
+
+    # Convert point to Point struct
+    test_point = _internal.xyz.Point(point[0], point[1], point[2])
+
+    # Get bool from C++ function
+    assert corners_cpp.is_point_inside_cell(test_point) is expected
+
+
+def test_extract_onelayer_grid(get_drogondata):
+    """get a grid with one layer"""
+
+    @functimer(output="print")
+    def _create_grid(get_drogondata):
+        grid, _, _, _ = get_drogondata
+
+        grid_cpp = _internal.grid3d.Grid(grid)
+
+        return grid_cpp.extract_onelayer_grid()
+
+    new_grid_cpp = _create_grid(get_drogondata)
+
+    assert isinstance(new_grid_cpp, xtgeo._internal.grid3d.Grid)
+
+    # now make into Python; not needed bit for eventual QC
+    grd = xtgeo.Grid(
+        coordsv=new_grid_cpp.coordsv,
+        zcornsv=new_grid_cpp.zcornsv,
+        actnumsv=new_grid_cpp.actnumsv,
+    )
+    print(grd.dimensions)
+
+    grd.to_file("onelayer.grdecl", fformat="grdecl")
+
+
+@functimer(output="print")
+def test_sample_grid_indices_from_polyline(get_drogondata):
+    grid, _, _, well = get_drogondata
+
+    grid_cpp = _internal.grid3d.Grid(grid)
+
+    df = well.get_dataframe()
+    points = np.column_stack((df["X_UTME"], df["Y_UTMN"], df["Z_TVDSS"]))
+
+    pol_cpp = _internal.xyz.Polygon(points)
+
+    grid_cpp.sample_grid_indices_from_polyline(pol_cpp)
+
+
+@functimer(output="print")
+def test_grid_get_bounding_box(get_drogondata):
+    grid, _, _, well = get_drogondata
+
+    grid_cpp = _internal.grid3d.Grid(grid)
+    lower_left, upper_right = grid_cpp.get_bounding_box()
+
+    assert lower_left.x == pytest.approx(456063.7, abs=0.1)
+    assert lower_left.y == pytest.approx(5926551.0, abs=0.1)
+    assert lower_left.z == pytest.approx(1554.2, abs=0.1)
+
+    assert upper_right.x == pytest.approx(467489.3, abs=0.1)
+    assert upper_right.y == pytest.approx(5939441.0, abs=0.1)
+    assert upper_right.z == pytest.approx(2001.6, abs=0.1)

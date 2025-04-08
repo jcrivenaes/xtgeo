@@ -4,12 +4,14 @@
 
 #include <pybind11/pybind11.h>
 #include <pybind11/numpy.h>
+#include <Eigen/Dense>
 #include <array>
 #include <cmath>
 #include <cstddef>
 
 #ifndef M_PI
-#define M_PI 3.14159265358979323846  // seems like Windows does not define M_PI i cmath
+    #define M_PI                                                                       \
+        3.14159265358979323846  // seems like Windows does not define M_PI i cmath
 #endif
 
 namespace py = pybind11;
@@ -47,6 +49,14 @@ struct Point
 
     // Constructor that takes three arguments
     Point(double x, double y, double z) : x(x), y(y), z(z) {}
+
+    Point operator-(const Point &other) const
+    {
+        return { x - other.x, y - other.y, z - other.z };
+    }
+
+    // Method to convert to Eigen::Vector3d for easier calculations
+    Eigen::Vector3d to_eigen() const { return Eigen::Vector3d(x, y, z); }
 };  // struct Point
 
 struct Polygon
@@ -257,6 +267,23 @@ struct RegularSurface
       ncol(ncol), nrow(nrow), xori(xori), yori(yori), xinc(xinc), yinc(yinc),
       rotation(rotation)
     {
+        // Create a NumPy array for values initialized to 0
+        values = py::array_t<double>({ nrow, ncol });
+        auto values_mutable = values.mutable_unchecked<2>();
+        for (size_t i = 0; i < nrow; ++i) {
+            for (size_t j = 0; j < ncol; ++j) {
+                values_mutable(i, j) = 0.0;  // Initialize all values to 0
+            }
+        }
+
+        // Create a NumPy array for the mask initialized to false
+        mask = py::array_t<bool>({ nrow, ncol });
+        auto mask_mutable = mask.mutable_unchecked<2>();
+        for (size_t i = 0; i < nrow; ++i) {
+            for (size_t j = 0; j < ncol; ++j) {
+                mask_mutable(i, j) = false;  // Initialize all mask values to false
+            }
+        }
     }
 
     // Constructor that takes a Python object and a skip_values flag

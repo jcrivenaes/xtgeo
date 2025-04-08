@@ -273,6 +273,42 @@ def _make_ijk_from_grid_v2(self, grid, grid_id="", activeonly=True):
     self.set_dataframe(newdf)
 
 
+def _make_ijk_from_grid_v3(self, grid, grid_id="", activeonly=True):
+    """Getting IJK from a grid and make as well logs.
+
+    This is a even newer version using grid.get_ijk_from_points...
+    """
+    # establish a Points instance and make points dataframe from well trajectory X Y Z
+    wpoints = Points()
+    wpdf = self.get_dataframe().loc[:, [self.xname, self.yname, self.zname]]
+    wpdf.reset_index(inplace=True, drop=True)
+    wpoints.set_dataframe(wpdf)
+
+    # column names
+    cna = ("ICELL" + grid_id, "JCELL" + grid_id, "KCELL" + grid_id)
+
+    df = grid.get_ijk_from_points(
+        wpoints,
+        activeonly=activeonly,
+        zerobased=False,
+        dataframe=True,
+        includepoints=False,
+        columnnames=cna,
+        fmt="float",
+        undef=np.nan,
+    )
+
+    # The resulting df shall have same length as the well's dataframe,
+    # but the well index may not start from one. So first ignore index, then
+    # re-establish
+    wellindex = self.get_dataframe(copy=False).index
+
+    newdf = pd.concat([self.get_dataframe().reset_index(drop=True), df], axis=1)
+    newdf.index = wellindex
+
+    self.set_dataframe(newdf)
+
+
 def get_gridproperties(self, gridprops, grid=("ICELL", "JCELL", "KCELL"), prop_id=""):
     """Getting gridproperties as logs.
 

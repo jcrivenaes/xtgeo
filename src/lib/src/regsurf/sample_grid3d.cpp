@@ -1,10 +1,14 @@
 #include <pybind11/pybind11.h>  // always in top, refer to pybind11 docs
 #include <pybind11/numpy.h>
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <limits>
+#include <xtgeo/grid3d.hpp>
+#include <xtgeo/regsurf.hpp>
 
 #ifdef __linux__
-#include <omp.h>
+    #include <omp.h>
 #endif
 
 #include <iostream>
@@ -17,13 +21,14 @@ namespace py = pybind11;
 
 namespace xtgeo::regsurf {
 
-/*
+/**
  * @brief Sample I J and depths from 3D grid to regularsurface
  *
  * @param regsurf RegularSurface object representing the surface input
  * @param grd Grid object representing the 3D grid
  * @param klayer The layer to sample, base 0
  * @param index_position 0: top, 1: base|bot, 2: center
+ * @param num_threads - number of threads; default -1 means auto from system
  * @return Tuple of 5 numpy arrays: I index, J index, Depth_top, Depth_base, Inactive
  */
 std::tuple<py::array_t<int>,
@@ -172,5 +177,58 @@ sample_grid3d_layer(const RegularSurface &regsurf,
 
     return std::make_tuple(iindex, jindex, depth_top, depth_bot, inactive);
 }  // regsurf_sample_grid3d_layer
+
+/**
+ * @brief Create a RegularSurface from a Grid by finding the minimum and maximum
+ *        coordinates and scaling the surface dimensions based on the scale factor.
+ *
+ * @param grid The input Grid object.
+ * @param scale_factor A scaling factor to adjust the number of columns and rows.
+ * @return A RegularSurface object as template, i.e. with no values.
+ */
+RegularSurface
+create_template_regsurf_from_grid(const grid3d::Grid &grid, double scale_factor)
+{
+    // Initialize min and max values
+    double xmin = std::numeric_limits<double>::max();
+    double xmax = std::numeric_limits<double>::lowest();
+    double ymin = std::numeric_limits<double>::max();
+    double ymax = std::numeric_limits<double>::lowest();
+
+    auto coordsv_ = grid.coordsv.unchecked<3>();
+
+    // Loop through the grid to find the min and max coordinates
+    for (size_t i = 0; i < grid.ncol + 1; i++) {
+        for (size_t j = 0; j < grid.nrow + 1; j++) {
+            double x_upper = coordsv_(i, j, 0);
+            double y_upper = coordsv_(i, j, 1);
+            double x_lower = coordsv_(i, j, 3);
+            double y_lower = coordsv_(i, j, 4);
+
+            double x_min = std::min(x_upper, x_lower);
+            double x_max = std::max(x_upper, x_lower);
+            double y_min = std::min(y_upper, y_lower);
+            double y_max = std::max(y_upper, y_lower);
+
+            xmin = std::min(xmin, x_min);
+            xmax = std::max(xmax, x_max);
+            ymin = std::min(ymin, y_min);
+            ymax = std::max(ymax, y_max);
+        }
+    }
+
+    // Scale the number of columns and rows; note that the rotation of the 3D grid is
+    // not considered, for simplicity.
+    size_t ncol = static_cast<size_t>(grid.ncol * scale_factor);
+    size_t nrow = static_cast<size_t>(grid.nrow * scale_factor);
+
+    // Compute the increments for the RegularSurface
+    double xinc = (xmax - xmin) / (ncol - 1);
+    double yinc = (ymax - ymin) / (nrow - 1);
+    double rotation = 0.0;
+
+    // Create and return the RegularSurface
+    return RegularSurface(ncol, nrow, xmin, ymin, xinc, yinc, rotation);
+}
 
 }  // namespace xtgeo::regsurf

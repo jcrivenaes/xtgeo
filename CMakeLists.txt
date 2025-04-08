@@ -4,6 +4,15 @@ project(${SKBUILD_PROJECT_NAME} LANGUAGES C CXX)
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_CXX_STANDARD 17)
 
+# Add Eigen
+include(FetchContent)
+FetchContent_Declare(
+    Eigen
+    GIT_REPOSITORY https://gitlab.com/libeigen/eigen.git
+    GIT_TAG 3.4.0
+)
+FetchContent_MakeAvailable(Eigen)
+
 if(NOT SKBUILD)
   message(
     WARNING "This CMakeLists.txt file should not be used directly.\n"

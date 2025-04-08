@@ -12,6 +12,7 @@ find_package(
 include(UseSWIG)
 find_package(pybind11 REQUIRED)
 
+
 if(UNIX AND NOT APPLE)
   find_package(OpenMP REQUIRED)
 endif()
@@ -20,6 +21,7 @@ message(STATUS "Python executable     : ${Python_EXECUTABLE}")
 message(STATUS "Python include dirs   : ${Python_INCLUDE_DIRS}")
 message(STATUS "numpy include path    : ${Python_NumPy_INCLUDE_DIRS}")
 message(STATUS "pybind11 include path : ${pybind11_INCLUDE_DIRS}")
+message(STATUS "Eigen3 include path   : ${EIGEN3_INCLUDE_DIR}")
 
 # TODO: replace globbing with unique list, as globbing is bad practice
 file(GLOB SOURCES ${SRC}/*.c)
@@ -29,9 +31,25 @@ if(MSVC)
   set(XTGFLAGS /Ox /wd4996 /wd4267 /wd4244 /wd4305)
   set(CXTGEOFLAGS /Ox /wd4996 /wd4267 /wd4244 /wd4305)
 else()
-  set(XTGFLAGS -Wall -Wno-unused-but-set-variable -Wno-undef -fPIC)
-  set(CXTGEOFLAGS -Wall -Wno-unused-but-set-variable -Wno-undef)
+  set(XTGFLAGS 
+      -Wall 
+      -O3
+      -march=native 
+      -ffast-math 
+      -DNDEBUG 
+      -Wno-unused-but-set-variable 
+      -Wno-undef 
+      -fPIC)
+  set(CXTGEOFLAGS 
+      -Wall 
+      -O3 
+      -march=native 
+      -ffast-math 
+      -DNDEBUG 
+      -Wno-unused-but-set-variable 
+      -Wno-undef)
 endif()
+
 
 pybind11_add_module(
   _internal
@@ -44,16 +62,20 @@ pybind11_add_module(
   "${SRC}/grid3d/grid.cpp"
   "${SRC}/grid3d/grid_reorganize.cpp"
   "${SRC}/grid3d/grid_surf_oper.cpp"
+  "${SRC}/grid3d/grid_xyz_oper.cpp"
+  "${SRC}/grid3d/grid_ijk_from_polyline.cpp"
   "${SRC}/cube/cube.cpp"
   "${SRC}/regsurf/sample_grid3d.cpp"
   "${SRC}/regsurf/utilities.cpp"
   ${SOURCES})
 target_include_directories(_internal PRIVATE ${CMAKE_CURRENT_LIST_DIR}/include)
-# Link OpenMP
 
-if(UNIX
-   AND NOT APPLE
-   AND OpenMP_CXX_FOUND)
+# link Eigen
+target_link_libraries(_internal PRIVATE Eigen3::Eigen)
+
+# Ensure OpenMP flags are properly set
+if(UNIX AND NOT APPLE AND OpenMP_CXX_FOUND)
+  target_compile_options(_internal PRIVATE ${OpenMP_CXX_FLAGS})
   target_link_libraries(_internal PRIVATE OpenMP::OpenMP_CXX)
 endif()
 

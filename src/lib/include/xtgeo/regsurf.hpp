@@ -26,6 +26,12 @@ get_z_from_xy(const RegularSurface &rs,
               const double y,
               const double tolerance = numerics::TOLERANCE);
 
+std::tuple<int, int>
+get_ij_from_xy(const RegularSurface &regsurf,
+               const double x,
+               const double y,
+               const double tolerance = numerics::TOLERANCE);
+
 std::tuple<int, int, int, int>
 find_cell_range(const RegularSurface &rs,
                 const double xmin,
@@ -44,6 +50,9 @@ sample_grid3d_layer(const RegularSurface &rs_cpp,
                     const size_t klayer,
                     const int index_position,
                     const int num_threads = -1);
+
+RegularSurface
+create_template_regsurf_from_grid(const grid3d::Grid &grid, double scale_factor = 1.0);
 
 inline void
 init(py::module &m)
@@ -74,9 +83,19 @@ init(py::module &m)
       .def("get_z_from_xy", &get_z_from_xy,
            "Get the Z value in a regsurf from a x y point.", py::arg("x"), py::arg("y"),
            py::arg("tolerance") = numerics::TOLERANCE)
+      .def("get_ij_from_xy", &get_ij_from_xy,
+           "Get the IJ value in a regsurf from a x y point.", py::arg("x"),
+           py::arg("y"), py::arg("tolerance") = numerics::TOLERANCE)
       .def("sample_grid3d_layer", &sample_grid3d_layer,
            "Sample values for regular surface from a 3D grid.", py::arg("grid_cpp"),
-           py::arg("klayer"), py::arg("index_position"), py::arg("num_threads") = -1);
+           py::arg("klayer"), py::arg("index_position"), py::arg("num_threads") = -1)
+
+      ;
+
+    m_regsurf.def("create_template_regsurf_from_grid",
+                  &create_template_regsurf_from_grid,
+                  "Create a template regularsurface from a grid", py::arg("grid_cpp"),
+                  py::arg("scale_factor") = 1.0);
 }
 
 }  // namespace xtgeo::regsurf

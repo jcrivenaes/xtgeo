@@ -277,3 +277,89 @@ def test_xy_point_in_polygon_speed(benchmark):
         _internal.geometry.is_xy_point_in_polygon(*point, poly)
 
     benchmark(run_benchmark)
+
+
+def test_line_quad_intersection():
+    """Test line segment intersection with quadrilateral."""
+    # Define a quad in the XY plane at Z=0
+    quad = np.array(
+        [
+            [0.0, 0.0, 0.0],  # SW corner
+            [1.0, 0.0, 0.0],  # SE corner
+            [1.0, 1.0, 0.0],  # NE corner
+            [0.0, 1.0, 0.0],  # NW corner
+        ]
+    )
+
+    # Basic cases
+    # Test case 1: Line segment intersects quad center
+    p1 = np.array([0.5, 0.5, -1.0])
+    p2 = np.array([0.5, 0.5, 1.0])
+    assert _internal.geometry.does_line_segment_intersect_quad(p1, p2, quad)
+
+    # Test case 2: Line segment completely misses
+    p1 = np.array([-1.0, -1.0, 1.0])
+    p2 = np.array([-0.5, -0.5, 1.0])
+    assert not _internal.geometry.does_line_segment_intersect_quad(p1, p2, quad)
+
+    # Test case 3: Line segment parallel to quad
+    p1 = np.array([0.5, 0.5, 1.0])
+    p2 = np.array([1.5, 1.5, 1.0])
+    assert not _internal.geometry.does_line_segment_intersect_quad(p1, p2, quad)
+
+    # Edge cases
+    # Test case 4: Line segment through corner
+    p1 = np.array([0.0, 0.0, -1.0])
+    p2 = np.array([0.0, 0.0, 1.0])
+    assert _internal.geometry.does_line_segment_intersect_quad(p1, p2, quad)
+
+    # Test case 5: Line segment along edge
+    p1 = np.array([0.0, 0.0, 0.0])
+    p2 = np.array([1.0, 0.0, 0.0])
+    assert _internal.geometry.does_line_segment_intersect_quad(p1, p2, quad)
+
+    # Test case 6: Line segment endpoint exactly on quad
+    p1 = np.array([0.5, 0.5, 0.0])
+    p2 = np.array([0.5, 0.5, 1.0])
+    assert _internal.geometry.does_line_segment_intersect_quad(p1, p2, quad)
+
+    # Test case 7: Very short line segment near quad
+    p1 = np.array([0.5, 0.5, 0.0])
+    p2 = np.array([0.5, 0.5, 1e-10])
+    assert _internal.geometry.does_line_segment_intersect_quad(p1, p2, quad)
+
+    # Test case 8: Nearly parallel to quad
+    p1 = np.array([0.5, 0.5, 1e-10])
+    p2 = np.array([1.5, 1.5, 0.0])
+    assert _internal.geometry.does_line_segment_intersect_quad(p1, p2, quad)
+
+    # Degenerate cases
+    # Test case 9: Zero-length line segment
+    p1 = np.array([0.5, 0.5, 1.0])
+    p2 = np.array([0.5, 0.5, 1.0])
+    assert not _internal.geometry.does_line_segment_intersect_quad(p1, p2, quad)
+
+    # Test case 10: Line segment touches quad at single point
+    p1 = np.array([0.0, 0.0, 0.0])
+    p2 = np.array([-1.0, -1.0, -1.0])
+    assert _internal.geometry.does_line_segment_intersect_quad(p1, p2, quad)
+
+    # Test skewed quad
+    skewed_quad = np.array(
+        [
+            [0.0, 0.0, 0.0],  # SW corner
+            [1.0, 0.2, 0.1],  # SE corner
+            [0.8, 1.2, -0.1],  # NE corner
+            [-0.2, 0.9, 0.2],  # NW corner
+        ]
+    )
+
+    # Test case 11: Line through skewed quad
+    p1 = np.array([0.4, 0.4, -1.0])
+    p2 = np.array([0.4, 0.4, 1.0])
+    assert _internal.geometry.does_line_segment_intersect_quad(p1, p2, skewed_quad)
+
+    # Test case 12: Line parallel to skewed quad
+    p1 = np.array([0.4, 0.4, 1.0])
+    p2 = np.array([1.4, 1.4, 1.0])
+    assert not _internal.geometry.does_line_segment_intersect_quad(p1, p2, skewed_quad)

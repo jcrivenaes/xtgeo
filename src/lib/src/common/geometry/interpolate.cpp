@@ -1,3 +1,4 @@
+#include <Eigen/Dense>
 #include <xtgeo/geometry.hpp>
 #include <xtgeo/numerics.hpp>
 #include <xtgeo/types.hpp>
@@ -166,5 +167,37 @@ find_rect_corners_from_center(const double x,
 
     return { x + r1x, y + r1y, x + r2x, y + r2y, x - r1x, y - r1y, x - r2x, y - r2y };
 }  // find_rect_corners_from_center
+
+bool
+does_line_segment_intersect_plane(const xyz::Point &p1,
+                                  const xyz::Point &p2,
+                                  const xyz::Point &a,
+                                  const xyz::Point &b,
+                                  const xyz::Point &c,
+                                  const xyz::Point &d)
+{
+    // Compute the plane normal
+    Eigen::Vector3d normal =
+      (b.to_eigen() - a.to_eigen()).cross(c.to_eigen() - a.to_eigen());
+
+    // Check if the line segment intersects the plane
+    double d1 = normal.dot(p1.to_eigen() - a.to_eigen());
+    double d2 = normal.dot(p2.to_eigen() - a.to_eigen());
+
+    // If both points are on the same side of the plane, no intersection
+    if (d1 * d2 > 0) {
+        printf("Line segment does not intersect the plane\n");
+        return false;
+    }
+
+    // Compute the intersection point
+    printf("Line segment does MAYBE intersect the plane\n");
+    double t = d1 / (d1 - d2);
+    Eigen::Vector3d intersection = p1.to_eigen() + t * (p2.to_eigen() - p1.to_eigen());
+
+    // Check if the intersection point is inside the quadrilateral
+    return geometry::is_xy_point_in_quadrilateral(intersection.x(), intersection.y(), a,
+                                                  b, c, d);
+}
 
 }  // namespace xtgeo::geometry
