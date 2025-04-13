@@ -14,6 +14,44 @@ namespace py = pybind11;
 
 namespace xtgeo::grid3d {
 
+// =====================================================================================
+// OPERATIONS ON INDIVIDUAL CELLS
+// =====================================================================================
+
+CellCorners
+get_cell_corners_from_ijk(const Grid &grid_cpp,
+                          const size_t i,
+                          const size_t j,
+                          const size_t k);
+
+std::vector<double>
+get_corners_minmax(const CellCorners &corners);
+
+std::tuple<xyz::Point, xyz::Point>
+get_cell_bounding_box(const CellCorners &corners);
+
+std::tuple<xyz::Point, xyz::Point>
+get_cell_bounding_box(const CellCorners &corners);
+
+bool
+is_xy_point_in_cell(const double x,
+                    const double y,
+                    const CellCorners &corners,
+                    int option);
+
+bool
+is_point_in_cell(const xyz::Point &point, const CellCorners &corners);
+
+double
+get_depth_in_cell(const double x,
+                  const double y,
+                  const CellCorners &corners,
+                  int option);
+
+// =====================================================================================
+// OPERATIONS ON MULTIPLE CELLS/GRID
+// =====================================================================================
+
 py::array_t<double>
 get_cell_volumes(const Grid &grid_cpp,
                  const int precision,
@@ -26,27 +64,6 @@ std::tuple<py::array_t<double>, py::array_t<double>, py::array_t<double>>
 get_height_above_ffl(const Grid &grid_cpp,
                      const py::array_t<float> &ffl,
                      const size_t option);
-
-CellCorners
-get_cell_corners_from_ijk(const Grid &grid_cpp,
-                          const size_t i,
-                          const size_t j,
-                          const size_t k);
-
-std::vector<double>
-get_corners_minmax(CellCorners &get_cell_corners_from_ijk);
-
-bool
-is_xy_point_in_cell(const double x,
-                    const double y,
-                    const CellCorners &corners,
-                    int option);
-
-double
-get_depth_in_cell(const double x,
-                  const double y,
-                  const CellCorners &corners,
-                  int option);
 
 py::array_t<int8_t>
 get_gridprop_value_between_surfaces(const Grid &grd,
@@ -71,6 +88,10 @@ std::tuple<pybind11::array_t<float>, pybind11::array_t<int>>
 adjust_boxgrid_layers_from_regsurfs(Grid &grd,
                                     const std::vector<regsurf::RegularSurface> &rsurfs,
                                     const double tolerance = numerics::TOLERANCE);
+
+// =====================================================================================
+// PYTHON BINDINGS, IF NEEDED
+// =====================================================================================
 
 inline void
 init(py::module &m)
@@ -128,8 +149,12 @@ init(py::module &m)
 
     m_grid3d.def("get_corners_minmax", &get_corners_minmax,
                  "Get a vector containing the minmax of a single corner set");
+    m_grid3d.def("get_cell_bounding_box", &get_cell_bounding_box,
+                 "Get the bounding box for a cell");
     m_grid3d.def("is_xy_point_in_cell", &is_xy_point_in_cell,
                  "Determine if a XY point is inside a cell, top or base.");
+    m_grid3d.def("is_point_in_cell", &is_point_in_cell,
+                 "Determine if a point XYZ is inside a cell, in 3D");
     m_grid3d.def("get_depth_in_cell", &get_depth_in_cell,
                  "Determine the interpolated cell face Z from XY, top or base.");
     m_grid3d.def("process_edges_rmsapi", &process_edges_rmsapi, "Edge prosessing...");

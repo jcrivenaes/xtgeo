@@ -65,5 +65,4 @@ is_xy_point_in_quadrilateral(const double x,
 
     return winding_number == 4 || winding_number == -4;
 }
-
 }  // namespace xtgeo::geometry

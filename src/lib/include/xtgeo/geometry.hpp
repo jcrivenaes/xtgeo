@@ -13,6 +13,10 @@ namespace py = pybind11;
 
 namespace xtgeo::geometry {
 
+// =====================================================================================
+// TETRAHEDRONS
+// =====================================================================================
+
 constexpr int TETRAHEDRON_VERTICES[4][6][4] = {
     // cell top/base hinge is splittet 0 - 3 / 4 - 7
     {
@@ -62,18 +66,16 @@ constexpr int TETRAHEDRON_VERTICES[4][6][4] = {
       { 5, 6, 4, 0 } }
 };
 
-inline double
-hexahedron_dz(const grid3d::CellCorners &corners)
-{
-    // TODO: This does not account for overall zflip ala Petrel or cells that
-    // are malformed
-    double dzsum = 0.0;
-    dzsum += std::abs(corners.upper_sw.z - corners.lower_sw.z);
-    dzsum += std::abs(corners.upper_se.z - corners.lower_se.z);
-    dzsum += std::abs(corners.upper_nw.z - corners.lower_nw.z);
-    dzsum += std::abs(corners.upper_ne.z - corners.lower_ne.z);
-    return dzsum / 4.0;
-}
+bool
+is_point_in_tetrahedron(const xyz::Point &point,
+                        const xyz::Point &v0,
+                        const xyz::Point &v1,
+                        const xyz::Point &v2,
+                        const xyz::Point &v3);
+
+// =====================================================================================
+// POLYGONS (TRIANGLES, QUADRILATERALS, ...)
+// =====================================================================================
 
 inline double
 triangle_area(const xyz::Point &p1, const xyz::Point &p2, const xyz::Point &p3)
@@ -82,8 +84,15 @@ triangle_area(const xyz::Point &p1, const xyz::Point &p2, const xyz::Point &p3)
            std::abs(p1.x * (p2.y - p3.y) + p2.x * (p3.y - p1.y) + p3.x * (p1.y - p2.y));
 }
 
-double
-hexahedron_volume(const grid3d::CellCorners &corners, const int precision);
+inline double
+quadrilateral_area(const xyz::Point &p1,
+                   const xyz::Point &p2,
+                   const xyz::Point &p3,
+                   const xyz::Point &p4)
+{
+    // Note points are in clockwise order or counter-clockwise order
+    return triangle_area(p1, p2, p3) + triangle_area(p1, p3, p4);
+}
 
 bool
 is_xy_point_in_polygon(const double x, const double y, const xyz::Polygon &polygon);
@@ -121,7 +130,36 @@ find_rect_corners_from_center(const double x,
                               const double yinc,
                               const double rot);
 
-// functions exposed to Python:
+// =====================================================================================
+// HEXAHEDRON
+// =====================================================================================
+
+inline double
+hexahedron_dz(const grid3d::CellCorners &corners)
+{
+    // TODO: This does not account for overall zflip ala Petrel or cells that
+    // are malformed
+    double dzsum = 0.0;
+    dzsum += std::abs(corners.upper_sw.z - corners.lower_sw.z);
+    dzsum += std::abs(corners.upper_se.z - corners.lower_se.z);
+    dzsum += std::abs(corners.upper_nw.z - corners.lower_nw.z);
+    dzsum += std::abs(corners.upper_ne.z - corners.lower_ne.z);
+    return dzsum / 4.0;
+}
+
+double
+hexahedron_volume(const grid3d::CellCorners &corners, const int precision);
+
+bool
+is_point_in_hexahedron(const xyz::Point &point,
+                       const grid3d::CellCorners &corners,
+                       const std::string &method);
+bool
+is_hexahedron_non_convex(const grid3d::CellCorners &corners);
+
+// =====================================================================================
+// PYTHON BINDINGS
+// =====================================================================================
 inline void
 init(py::module &m)
 {
@@ -149,6 +187,10 @@ init(py::module &m)
                    py::arg("x"), py::arg("y"), py::arg("p1"), py::arg("p2"),
                    py::arg("p3"), py::arg("p4"),
                    py::arg("tolerance") = numerics::TOLERANCE);
+    m_geometry.def("is_point_in_hexahedron", &is_point_in_hexahedron,
+                   "Determine if a point XYZ is inside a hexahedron, with method");
+    m_geometry.def("is_hexahedron_non_convex", &is_hexahedron_non_convex,
+                   "Determine if a hexahedron is non-convex");
 }
 }  // namespace xtgeo::geometry
 
