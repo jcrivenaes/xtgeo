@@ -12,6 +12,20 @@
 #define M_PI 3.14159265358979323846  // seems like Windows does not define M_PI i cmath
 #endif
 
+// =====================================================================================
+// NOTE CAREFULLY!
+//
+// XTGeo uses two different Z-coordinate conventions:
+// - In Python: Z increases downward (geological depth convention)
+// - In C++: Z increases upward (mathematical Cartesian convention)
+
+// When passing Z values between Python and C++:
+// 1. When receiving Z from Python to C++: **negate the Z value**
+// 2. When returning Z from C++ to Python: **negate the Z value**
+
+// This simple negation ensures consistent handling across the codebase.
+// =====================================================================================
+
 namespace py = pybind11;
 
 namespace xtgeo {
@@ -34,7 +48,7 @@ namespace xyz {
 
 struct Point
 {
-    // a single point in 3D space
+    // a single point in 3D space, Z is increasing upward
     double x;
     double y;
     double z;
@@ -88,6 +102,10 @@ namespace grid3d {
 
 struct Grid
 {
+
+    // Also for a 3D grid, Z is increasing upward in C++! For most North Sea cases it
+    // means that Z values are "negative" depths
+
     size_t ncol;
     size_t nrow;
     size_t nlay;
@@ -151,6 +169,13 @@ struct Grid
 
 struct CellCorners
 {
+    // For cellcorners, Z is increasing upward in C++! For most North Sea cases it means
+    // that Z values are "negative" depths
+    // The order of the corners is as follows:
+    // upper corners: sw, se, nw, ne
+    // lower corners: sw, se, nw, ne
+    // The Z convention mens that upper corners have higher Z values than lower corners
+
     xyz::Point upper_sw;
     xyz::Point upper_se;
     xyz::Point upper_nw;
