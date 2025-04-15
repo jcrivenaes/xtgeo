@@ -165,7 +165,59 @@ is_point_in_hexahedron_using_raycasting(const xyz::Point &point,
 // =====================================================================================
 // Tetrahedrical calculations for a point inside a hexahedron
 // =====================================================================================
+/**
+ * @brief Special method for difficult cases
 
+ */
+
+static bool
+is_point_in_hexahedron_using_centroid_tetrahedrons(const xyz::Point &point,
+                                                   const CellCorners &corners)
+{
+    // Get all corners in a more accessible format (right-handed)
+    std::array<xyz::Point, 8> vertices = {
+        xyz::Point{ corners.upper_sw.x, corners.upper_sw.y, -corners.upper_sw.z },
+        xyz::Point{ corners.upper_se.x, corners.upper_se.y, -corners.upper_se.z },
+        xyz::Point{ corners.upper_ne.x, corners.upper_ne.y, -corners.upper_ne.z },
+        xyz::Point{ corners.upper_nw.x, corners.upper_nw.y, -corners.upper_nw.z },
+        xyz::Point{ corners.lower_sw.x, corners.lower_sw.y, -corners.lower_sw.z },
+        xyz::Point{ corners.lower_se.x, corners.lower_se.y, -corners.lower_se.z },
+        xyz::Point{ corners.lower_ne.x, corners.lower_ne.y, -corners.lower_ne.z },
+        xyz::Point{ corners.lower_nw.x, corners.lower_nw.y, -corners.lower_nw.z }
+    };
+
+    // Convert point to right-handed
+    xyz::Point point_rh = { point.x, point.y, -point.z };
+
+    // Calculate the centroid of the hexahedron
+    xyz::Point centroid = { 0.0, 0.0, 0.0 };
+    for (const auto &v : vertices) {
+        centroid.x += v.x;
+        centroid.y += v.y;
+        centroid.z += v.z;
+    }
+    centroid.x /= 8.0;
+    centroid.y /= 8.0;
+    centroid.z /= 8.0;
+
+    // Use the CENTROID_TETRAHEDRON_SCHEME defined in geometry.hpp
+    for (int scheme = 0; scheme < 2; ++scheme) {
+        for (size_t i = 0; i < 8; ++i) {
+            const auto &tetra = CENTROID_TETRAHEDRON_SCHEME[scheme][i];
+            // Note: We're explicitly handling the -1 case (which means use centroid)
+            const xyz::Point &v0 = vertices[tetra[0]];
+            const xyz::Point &v1 = vertices[tetra[1]];
+            const xyz::Point &v2 = vertices[tetra[2]];
+
+            // The fourth vertex is always the centroid, as specified by -1
+            if (is_point_in_tetrahedron(point_rh, v0, v1, v2, centroid)) {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
 /**
  * Determines if a point is inside a hexahedron (8-vertex cell).
  *
@@ -178,8 +230,8 @@ is_point_in_hexahedron_using_tetrahedrons(const xyz::Point &point,
                                           const CellCorners &corners)
 {
 
-    // Get all corners in a more accessible format, and negate Z so it will be
-    // right-handed
+    // Get all corners in a more accessible format,
+    //   and negate Z so it will be right - handed
     std::array<xyz::Point, 8> vertices = {
         xyz::Point{ corners.upper_sw.x, corners.upper_sw.y, -corners.upper_sw.z },
         xyz::Point{ corners.upper_se.x, corners.upper_se.y, -corners.upper_se.z },
@@ -194,26 +246,32 @@ is_point_in_hexahedron_using_tetrahedrons(const xyz::Point &point,
     // change Point also to right-handed
     xyz::Point point_rh = { point.x, point.y, -point.z };
 
-    // Split the hexahedron into 6 tetrahedra which is more robust for thin cells
-    // into 6 tetrahedra
-    // This decomposition is more robust than the 5-tetrahedron version
-    const std::array<std::array<int, 4>, 6> tetrahedra = { {
-      { 0, 1, 3, 5 },  // upper_sw, upper_se, upper_nw, lower_se
-      { 0, 3, 7, 5 },  // upper_sw, upper_nw, lower_nw, lower_se
-      { 0, 5, 7, 4 },  // upper_sw, lower_se, lower_nw, lower_sw
-      { 1, 2, 3, 5 },  // upper_se, upper_ne, upper_nw, lower_se
-      { 3, 5, 6, 7 },  // upper_nw, lower_se, lower_ne, lower_nw
-      { 2, 3, 5, 6 }   // upper_ne, upper_nw, lower_se, lower_ne
-    } };
+    size_t score = 0;
+    // Loop through all defined tetrahedron decomposition schemes
 
-    // Check if point is inside any tetrahedron
-    for (const auto &tetra : tetrahedra) {
-        if (is_point_in_tetrahedron(point_rh, vertices[tetra[0]], vertices[tetra[1]],
-                                    vertices[tetra[2]], vertices[tetra[3]])) {
-            return true;
+    for (int scheme = 0; scheme < 4; ++scheme) {
+        for (size_t i = 0; i < 6; ++i) {
+            const auto &tetra_indices = TETRAHEDRON_SCHEMES[scheme][i];
+            if (is_point_in_tetrahedron(
+                  point_rh, vertices[tetra_indices[0]], vertices[tetra_indices[1]],
+                  vertices[tetra_indices[2]], vertices[tetra_indices[3]])) {
+                // If the point is found in any tetrahedron of any scheme, return
+                // true
+                score += 1;
+            }
         }
     }
-    // If point is not inside any tetrahedron, it's outside the hexahedron
+
+    if (score > 2) {
+        // If the point is found in more than 2 tetrahedra, it is likely inside the
+        // hexahedron
+        return true;
+    }
+    if (score == 2) {
+        // In doubth here if the point is inside or outside the hexahedron, try the
+        // centroid method
+        return is_point_in_hexahedron_using_centroid_tetrahedrons(point, corners);
+    }
     return false;
 }  // is_point_in_hexahedron_using_tetrahedrons
 
@@ -243,6 +301,8 @@ is_point_in_hexahedron(const xyz::Point &point,
         return is_point_in_hexahedron_using_raycasting(point, corners);
     } else if (method == "tetrahedrons") {
         return is_point_in_hexahedron_using_tetrahedrons(point, corners);
+    } else if (method == "centroid_tetrahedrons") {
+        return is_point_in_hexahedron_using_centroid_tetrahedrons(point, corners);
     } else {
         throw std::invalid_argument("Invalid method for point-in-cell test");
     }
