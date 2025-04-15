@@ -66,6 +66,70 @@ constexpr int TETRAHEDRON_VERTICES[4][6][4] = {
       { 5, 6, 4, 0 } }
 };
 
+// schemes used for tetrahedron decomposition when the cell is re-arranged to
+// counter clock order.
+constexpr int TETRAHEDRON_SCHEMES[4][6][4] = {
+    // cell top/base hinge is splittet 0 - 3 / 4 - 7
+    {
+      { 0, 1, 3, 5 },  // upper_sw, upper_se, upper_nw, lower_se
+      { 0, 3, 7, 5 },  // upper_sw, upper_nw, lower_nw, lower_se
+      { 0, 5, 7, 4 },  // upper_sw, lower_se, lower_nw, lower_sw
+      { 1, 2, 3, 5 },  // upper_se, upper_ne, upper_nw, lower_se
+      { 3, 5, 6, 7 },  // upper_nw, lower_se, lower_ne, lower_nw
+      { 2, 3, 5, 6 }   // upper_ne, upper_nw, lower_se, lower_ne
+    },
+    {
+      { 0, 1, 2, 6 },  // Connects top face triangle (0,1,2) to vertex 6
+      { 0, 1, 5, 6 },  // Connects side face triangle (0,1,5) to vertex 6
+      { 0, 4, 5, 6 },  // Connects side face triangle (0,4,5) to vertex 6
+      { 0, 2, 3, 6 },  // Connects top face triangle (0,2,3) to vertex 6
+      { 0, 3, 7, 6 },  // Connects side face triangle (0,3,7) to vertex 6
+      { 0, 4, 7, 6 }   // Connects side face triangle (0,4,7) to vertex 6
+    },
+    {
+      { 1, 5, 2, 3 },  // Connects top face triangle (1,5,2) to vertex 3
+      { 2, 6, 1, 3 },  // Connects side face triangle (2,6,1) to vertex 3
+      { 5, 6, 7, 3 },  // Connects side face triangle (5,6,7) to vertex 3
+      { 1, 5, 2, 0 },  // Connects top face triangle (1,5,2) to vertex 0
+      { 2, 6, 1, 0 },  // Connects side face triangle (2,6,1) to vertex 0
+      { 5, 6, 4, 0 }   // Connects side face triangle (5,6,4) to vertex 0
+    },
+    {
+      { 0, 1, 3, 5 },  // Connects top face triangle (0,1,3) to vertex 5
+      { 0, 3, 7, 5 },  // Connects side face triangle (0,3,7) to vertex 5
+      { 0, 5, 7, 4 },  // Connects side face triangle (0,5,7) to vertex 4
+      { 1, 2, 3, 5 },  // Connects top face triangle (1,2,3) to vertex 5
+      { 3, 5, 6, 7 },  // Connects side face triangle (3,5,6) to vertex 7
+      { 2, 3, 5, 6 }   // Connects side face triangle (2,3,5) to vertex 6
+    }
+};
+
+// Centroid-based decomposition (8 tetrahedra)
+// Each tetrahedron connects a triangular face to the centroid
+// The -1 in the fourth position indicates to use the centroid
+
+constexpr int CENTROID_TETRAHEDRON_SCHEME[2][8][4] = {
+    {
+      { 0, 1, 3, -1 },  // top face: upper_sw, upper_se, upper_nw, centroid
+      { 1, 2, 3, -1 },  // top face: upper_se, upper_ne, upper_nw, centroid
+      { 4, 5, 7, -1 },  // bottom face: lower_sw, lower_se, lower_nw, centroid
+      { 5, 6, 7, -1 },  // bottom face: lower_se, lower_ne, lower_nw, centroid
+      { 0, 1, 5, -1 },  // front face: upper_sw, upper_se, lower_se, centroid
+      { 0, 4, 5, -1 },  // front face: upper_sw, lower_sw, lower_se, centroid
+      { 1, 2, 6, -1 },  // right face: upper_se, upper_ne, lower_ne, centroid
+      { 1, 5, 6, -1 }   // right face: upper_se, lower_se, lower_ne, centroid
+    },
+    {
+      { 0, 1, 2, -1 },  // top face: upper_sw, upper_se, upper_ne, centroid
+      { 0, 2, 3, -1 },  // top face: upper_sw, upper_ne, upper_nw, centroid
+      { 4, 5, 6, -1 },  // bottom face: lower_sw, lower_se, lower_ne, centroid
+      { 4, 6, 7, -1 },  // bottom face: lower_sw, lower_ne, lower_nw, centroid
+      { 0, 1, 5, -1 },  // front face: upper_sw, upper_se, lower_se, centroid
+      { 0, 4, 5, -1 },  // front face: upper_sw, lower_sw, lower_se, centroid
+      { 2, 3, 7, -1 },  // back face: upper_ne, upper_nw, lower_nw centroid
+      { 2, 6, 7, -1 }   // back face: upper_ne lower_ne lower_nw centroid
+    }
+};
 bool
 is_point_in_tetrahedron(const xyz::Point &point,
                         const xyz::Point &v0,
