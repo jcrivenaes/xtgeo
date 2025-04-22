@@ -14,6 +14,10 @@ namespace py = pybind11;
 
 namespace xtgeo::logging {
 
+// Macro to check if Python logging debug is enabled for a specific logger
+#define PYTHON_LOGGING_DEBUG(logger_name)                                              \
+    (xtgeo::logging::python_logging_debug_enabled(logger_name))
+
 // Logger class for logging messages to Python's logging module
 // This class is thread-safe and can be used in a multi-threaded environment, inlcuding
 // OMP, but possibly be careful in parallel regions
@@ -128,9 +132,8 @@ public:
     }
 
     template<typename... Args>
-    void debug(const std::string &message, Args... args)
+    void debug(const std::string &message, Args &&...args)
     {
-        // Check if debug level is enabled before formatting message
         bool enabled = false;
         {
             py::gil_scoped_acquire gil;
@@ -141,11 +144,12 @@ public:
         }
 
         if (!enabled) {
-            return;
+            return;  // Skip logging if debug level is not enabled
         }
-        log("debug", message, args...);
-    }
 
+        // Use a lambda to defer formatting until logging is confirmed
+        log("debug", message, std::forward<Args>(args)...);
+    }
     // Other level methods similar to debug()...
     template<typename... Args>
     void info(const std::string &message, Args... args)
@@ -162,7 +166,8 @@ public:
         if (!enabled) {
             return;
         }
-        log("info", message, args...);
+        // Use a lambda to defer formatting until logging is confirmed
+        log("info", message, std::forward<Args>(args)...);
     }
 
     template<typename... Args>
@@ -180,7 +185,7 @@ public:
         if (!enabled) {
             return;
         }
-        log("warning", message, args...);
+        log("warning", message, std::forward<Args>(args)...);
     }
 
     template<typename... Args>
@@ -198,7 +203,7 @@ public:
         if (!enabled) {
             return;
         }
-        log("error", message, args...);
+        log("error", message, std::forward<Args>(args)...);
     }
 
     template<typename... Args>
@@ -248,6 +253,23 @@ private:
 
 void
 test_logging_levels(const std::string &logger_name);
+
+inline bool
+python_logging_debug_enabled(const std::string &logger_name = "")
+{
+    py::gil_scoped_acquire gil;
+    py::object logging = py::module::import("logging");
+
+    if (logger_name.empty()) {
+        // Check the root logger's debug level
+        py::object root_logger = logging.attr("getLogger")();
+        return root_logger.attr("isEnabledFor")(logging.attr("DEBUG")).cast<bool>();
+    } else {
+        // Check a specific logger's debug level
+        py::object specific_logger = logging.attr("getLogger")(logger_name);
+        return specific_logger.attr("isEnabledFor")(logging.attr("DEBUG")).cast<bool>();
+    }
+}
 
 inline void
 init(py::module &m)

@@ -77,25 +77,9 @@ ray_intersects_triangle(const xyz::Point &origin,
 
 // helper function to use ray casting to check if a point is inside a "normal" cell
 static bool
-is_point_in_hexahedron_using_raycasting(const xyz::Point &point,
-                                        const CellCorners &corners)
+is_point_in_hexahedron_using_raycasting(const xyz::Point &point_rh,
+                                        const std::array<xyz::Point, 8> &vertices)
 {
-
-    // Get all corners in a more accessible format, and negate Z so it will be
-    // right-handed
-    std::array<xyz::Point, 8> cell_corners = {
-        xyz::Point{ corners.upper_sw.x, corners.upper_sw.y, -corners.upper_sw.z },
-        xyz::Point{ corners.upper_se.x, corners.upper_se.y, -corners.upper_se.z },
-        xyz::Point{ corners.upper_ne.x, corners.upper_ne.y, -corners.upper_ne.z },
-        xyz::Point{ corners.upper_nw.x, corners.upper_nw.y, -corners.upper_nw.z },
-        xyz::Point{ corners.lower_sw.x, corners.lower_sw.y, -corners.lower_sw.z },
-        xyz::Point{ corners.lower_se.x, corners.lower_se.y, -corners.lower_se.z },
-        xyz::Point{ corners.lower_ne.x, corners.lower_ne.y, -corners.lower_ne.z },
-        xyz::Point{ corners.lower_nw.x, corners.lower_nw.y, -corners.lower_nw.z }
-    };
-
-    // change Point also to right-handed
-    xyz::Point point_rh = { point.x, point.y, -point.z };
 
     // Define the 6 faces of the hexahedron (each face is 4 corners)
     // Face indices: 0=top, 1=bottom, 2=front, 3=right, 4=back, 5=left
@@ -114,10 +98,10 @@ is_point_in_hexahedron_using_raycasting(const xyz::Point &point,
     // Check each face for intersection with the ray from point to +X infinity
     for (const auto &face : faces) {
         // Get the 4 corners of this face
-        xyz::Point a = cell_corners[face[0]];
-        xyz::Point b = cell_corners[face[1]];
-        xyz::Point c = cell_corners[face[2]];
-        xyz::Point d = cell_corners[face[3]];
+        xyz::Point a = vertices[face[0]];
+        xyz::Point b = vertices[face[1]];
+        xyz::Point c = vertices[face[2]];
+        xyz::Point d = vertices[face[3]];
 
         // For a ray in +X direction, we need AT LEAST ONE corner has X > point.x
         // the right) We don't need points on the left for the face to possibly
@@ -171,23 +155,17 @@ is_point_in_hexahedron_using_raycasting(const xyz::Point &point,
  */
 
 static bool
-is_point_in_hexahedron_using_centroid_tetrahedrons(const xyz::Point &point,
-                                                   const CellCorners &corners)
+is_point_in_hexahedron_using_centroid_tetrahedrons(
+  const xyz::Point &point_rh,
+  const std::array<xyz::Point, 8> &vertices)
 {
-    // Get all corners in a more accessible format (right-handed)
-    std::array<xyz::Point, 8> vertices = {
-        xyz::Point{ corners.upper_sw.x, corners.upper_sw.y, -corners.upper_sw.z },
-        xyz::Point{ corners.upper_se.x, corners.upper_se.y, -corners.upper_se.z },
-        xyz::Point{ corners.upper_ne.x, corners.upper_ne.y, -corners.upper_ne.z },
-        xyz::Point{ corners.upper_nw.x, corners.upper_nw.y, -corners.upper_nw.z },
-        xyz::Point{ corners.lower_sw.x, corners.lower_sw.y, -corners.lower_sw.z },
-        xyz::Point{ corners.lower_se.x, corners.lower_se.y, -corners.lower_se.z },
-        xyz::Point{ corners.lower_ne.x, corners.lower_ne.y, -corners.lower_ne.z },
-        xyz::Point{ corners.lower_nw.x, corners.lower_nw.y, -corners.lower_nw.z }
-    };
+    auto &logger = xtgeo::logging::LoggerManager::get(
+      "geometry::is_point_in_hexahedron_using_centroid_tetrahedrons");
 
-    // Convert point to right-handed
-    xyz::Point point_rh = { point.x, point.y, -point.z };
+    if (PYTHON_LOGGING_DEBUG()) {
+        logger.debug(
+          "Using centroid tetrahedrons method for point-in-hexahedron check.");
+    }
 
     // Calculate the centroid of the hexahedron
     xyz::Point centroid = { 0.0, 0.0, 0.0 };
@@ -199,6 +177,17 @@ is_point_in_hexahedron_using_centroid_tetrahedrons(const xyz::Point &point,
     centroid.x /= 8.0;
     centroid.y /= 8.0;
     centroid.z /= 8.0;
+
+    if (PYTHON_LOGGING_DEBUG()) {
+        logger.debug("Centroid of hexahedron: ({}, {}, {})", centroid.x, centroid.y,
+                     centroid.z);
+        logger.debug("Point to check: ({}, {}, {})", point_rh.x, point_rh.y,
+                     point_rh.z);
+        logger.debug("Vertices of hexahedron:");
+        for (const auto &v : vertices) {
+            logger.debug("({:.2f}, {:.2f}, {:.2f})", v.x, v.y, v.z);
+        }
+    }
 
     // Use the CENTROID_TETRAHEDRON_SCHEME defined in geometry.hpp
     for (int scheme = 0; scheme < 2; ++scheme) {
@@ -218,6 +207,93 @@ is_point_in_hexahedron_using_centroid_tetrahedrons(const xyz::Point &point,
 
     return false;
 }
+static xyz::Point
+calculate_normal(const xyz::Point &p1, const xyz::Point &p2, const xyz::Point &p3)
+{
+    xyz::Point u = { p2.x - p1.x, p2.y - p1.y, p2.z - p1.z };
+    xyz::Point v = { p3.x - p1.x, p3.y - p1.y, p3.z - p1.z };
+    return { u.y * v.z - u.z * v.y, u.z * v.x - u.x * v.z, u.x * v.y - u.y * v.x };
+}
+
+static double
+calculate_planarity(const xyz::Point &p1,
+                    const xyz::Point &p2,
+                    const xyz::Point &p3,
+                    const xyz::Point &p4)
+{
+    xyz::Point normal1 = calculate_normal(p1, p2, p3);
+    xyz::Point normal2 = calculate_normal(p1, p3, p4);
+    double dot_product =
+      normal1.x * normal2.x + normal1.y * normal2.y + normal1.z * normal2.z;
+    double magnitude1 =
+      std::sqrt(normal1.x * normal1.x + normal1.y * normal1.y + normal1.z * normal1.z);
+    double magnitude2 =
+      std::sqrt(normal2.x * normal2.x + normal2.y * normal2.y + normal2.z * normal2.z);
+    return std::abs(dot_product /
+                    (magnitude1 * magnitude2));  // Cosine of the angle between normals
+}
+static double
+calculate_dip_direction(const xyz::Point &p1,
+                        const xyz::Point &p2,
+                        const xyz::Point &p3,
+                        const xyz::Point &p4)
+{
+    double avg_z = (p1.z + p2.z + p3.z + p4.z) / 4.0;
+    return avg_z;  // Higher avg_z indicates an upward slope
+}
+
+/**
+ * @brief Local function to select best scheme for tetrahedrons base on planarity
+ * and elevation differences.
+ */
+
+static int
+select_best_scheme(const std::array<xyz::Point, 8> &vertices)
+{
+    // Calculate elevation differences
+    double diag0_2_top = std::abs(vertices[0].z - vertices[2].z);
+    double diag1_3_top = std::abs(vertices[1].z - vertices[3].z);
+    double diag4_6_base = std::abs(vertices[4].z - vertices[6].z);
+    double diag5_7_base = std::abs(vertices[5].z - vertices[7].z);
+
+    // Calculate planarity scores
+    double planarity_top_diag0_2 =
+      calculate_planarity(vertices[0], vertices[1], vertices[2], vertices[3]);
+    double planarity_top_diag1_3 =
+      calculate_planarity(vertices[0], vertices[1], vertices[3], vertices[2]);
+    double planarity_base_diag4_6 =
+      calculate_planarity(vertices[4], vertices[5], vertices[6], vertices[7]);
+    double planarity_base_diag5_7 =
+      calculate_planarity(vertices[4], vertices[5], vertices[7], vertices[6]);
+
+    // Calculate dip directions
+    double dip_top =
+      calculate_dip_direction(vertices[0], vertices[1], vertices[2], vertices[3]);
+    double dip_base =
+      calculate_dip_direction(vertices[4], vertices[5], vertices[6], vertices[7]);
+
+    // Evaluate each scheme
+    double scheme0_score = diag0_2_top + diag4_6_base + (1.0 - planarity_top_diag0_2) +
+                           (1.0 - planarity_base_diag4_6);
+    double scheme1_score = diag0_2_top + diag5_7_base + (1.0 - planarity_top_diag0_2) +
+                           (1.0 - planarity_base_diag5_7);
+    double scheme2_score = diag1_3_top + diag4_6_base + (1.0 - planarity_top_diag1_3) +
+                           (1.0 - planarity_base_diag4_6);
+    double scheme3_score = diag1_3_top + diag5_7_base + (1.0 - planarity_top_diag1_3) +
+                           (1.0 - planarity_base_diag5_7);
+
+    // Find the scheme with the minimum score
+    double scores[4] = { scheme0_score, scheme1_score, scheme2_score, scheme3_score };
+    int best_scheme = 0;
+    for (int i = 1; i < 4; ++i) {
+        if (scores[i] < scores[best_scheme]) {
+            best_scheme = i;
+        }
+    }
+
+    return best_scheme;
+}
+
 /**
  * Determines if a point is inside a hexahedron (8-vertex cell).
  *
@@ -226,63 +302,41 @@ is_point_in_hexahedron_using_centroid_tetrahedrons(const xyz::Point &point,
  * @return true if the point is inside the hexahedron, false otherwise
  */
 static bool
-is_point_in_hexahedron_using_tetrahedrons(const xyz::Point &point,
-                                          const CellCorners &corners)
+is_point_in_hexahedron_using_tetrahedrons(const xyz::Point &point_rh,
+                                          const std::array<xyz::Point, 8> &vertices)
 {
 
-    // Get all corners in a more accessible format,
-    //   and negate Z so it will be right - handed
-    std::array<xyz::Point, 8> vertices = {
-        xyz::Point{ corners.upper_sw.x, corners.upper_sw.y, -corners.upper_sw.z },
-        xyz::Point{ corners.upper_se.x, corners.upper_se.y, -corners.upper_se.z },
-        xyz::Point{ corners.upper_ne.x, corners.upper_ne.y, -corners.upper_ne.z },
-        xyz::Point{ corners.upper_nw.x, corners.upper_nw.y, -corners.upper_nw.z },
-        xyz::Point{ corners.lower_sw.x, corners.lower_sw.y, -corners.lower_sw.z },
-        xyz::Point{ corners.lower_se.x, corners.lower_se.y, -corners.lower_se.z },
-        xyz::Point{ corners.lower_ne.x, corners.lower_ne.y, -corners.lower_ne.z },
-        xyz::Point{ corners.lower_nw.x, corners.lower_nw.y, -corners.lower_nw.z }
-    };
+    // Select the best scheme
+    int best_scheme = select_best_scheme(vertices);
 
-    // change Point also to right-handed
-    xyz::Point point_rh = { point.x, point.y, -point.z };
-
-    size_t score = 0;
-    // Loop through all defined tetrahedron decomposition schemes
-
-    for (int scheme = 0; scheme < 4; ++scheme) {
-        for (size_t i = 0; i < 6; ++i) {
-            const auto &tetra_indices = TETRAHEDRON_SCHEMES[scheme][i];
-            if (is_point_in_tetrahedron(
-                  point_rh, vertices[tetra_indices[0]], vertices[tetra_indices[1]],
-                  vertices[tetra_indices[2]], vertices[tetra_indices[3]])) {
-                // If the point is found in any tetrahedron of any scheme, return
-                // true
-                score += 1;
-            }
+    // Use the selected scheme to check if the point is inside
+    for (size_t i = 0; i < 6; ++i) {
+        const auto &tetra = TETRAHEDRON_SCHEMES[best_scheme][i];
+        if (is_point_in_tetrahedron(point_rh, vertices[tetra[0]], vertices[tetra[1]],
+                                    vertices[tetra[2]], vertices[tetra[3]])) {
+            return true;
         }
     }
 
-    if (score > 2) {
-        // If the point is found in more than 2 tetrahedra, it is likely inside the
-        // hexahedron
-        return true;
-    }
-    if (score == 2) {
-        // In doubth here if the point is inside or outside the hexahedron, try the
-        // centroid method
-        return is_point_in_hexahedron_using_centroid_tetrahedrons(point, corners);
-    }
     return false;
-}  // is_point_in_hexahedron_using_tetrahedrons
-
+}
 /**
  * @brief A central function where one can select appropriate method
+    * for point-in-cell test.
+    * @param point The point to test
+    * @param corners The 8 corners of the hexahedron
+    * @param method The method to use for the test
+    * @return true if the point is inside the hexahedron, false otherwise
+    * @throws std::invalid_argument if the method is not recognized
+    * @throws std::runtime_error if the method is not implemented
+
  */
 bool
 is_point_in_hexahedron(const xyz::Point &point,
                        const CellCorners &corners,
                        const std::string &method)
 {
+    // auto &logger = xtgeo::logging::LoggerManager::get("is_point_in_hexahedron");
 
     // Quick rejection test using bounding box; this is independent of the method
     auto [min_point, max_point] = grid3d::get_cell_bounding_box(corners);
@@ -297,12 +351,29 @@ is_point_in_hexahedron(const xyz::Point &point,
         return false;
     }
 
+    // make corners into vertices using right-handed coordinates, i.e. negate
+    // Z-coordinates and arrange counter clock wise seen from top
+    // logger.debug("Using method: {}", method);
+    std::array<xyz::Point, 8> vertices = {
+        xyz::Point{ corners.upper_sw.x, corners.upper_sw.y, -corners.upper_sw.z },
+        xyz::Point{ corners.upper_se.x, corners.upper_se.y, -corners.upper_se.z },
+        xyz::Point{ corners.upper_ne.x, corners.upper_ne.y, -corners.upper_ne.z },
+        xyz::Point{ corners.upper_nw.x, corners.upper_nw.y, -corners.upper_nw.z },
+        xyz::Point{ corners.lower_sw.x, corners.lower_sw.y, -corners.lower_sw.z },
+        xyz::Point{ corners.lower_se.x, corners.lower_se.y, -corners.lower_se.z },
+        xyz::Point{ corners.lower_ne.x, corners.lower_ne.y, -corners.lower_ne.z },
+        xyz::Point{ corners.lower_nw.x, corners.lower_nw.y, -corners.lower_nw.z }
+    };
+
+    // negate Z-coordinate of point to match right-handed system
+    xyz::Point point_rh = { point.x, point.y, -point.z };
+
     if (method == "ray_casting") {
-        return is_point_in_hexahedron_using_raycasting(point, corners);
+        return is_point_in_hexahedron_using_raycasting(point_rh, vertices);
     } else if (method == "tetrahedrons") {
-        return is_point_in_hexahedron_using_tetrahedrons(point, corners);
+        return is_point_in_hexahedron_using_tetrahedrons(point_rh, vertices);
     } else if (method == "centroid_tetrahedrons") {
-        return is_point_in_hexahedron_using_centroid_tetrahedrons(point, corners);
+        return is_point_in_hexahedron_using_centroid_tetrahedrons(point_rh, vertices);
     } else {
         throw std::invalid_argument("Invalid method for point-in-cell test");
     }

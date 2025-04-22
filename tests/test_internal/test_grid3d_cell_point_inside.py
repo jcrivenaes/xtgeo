@@ -78,7 +78,7 @@ def complex_grid():
         ("tetrahedrons", Point(50.0, 50.0, 990.0), False),
         ("tetrahedrons", Point(50.0, 50.0, 1020.0), False),
         ("centroid_tetrahedrons", Point(50.0, 50.0, 1005.0), True),
-        ("centroid_tetrahedrons", Point(40.0, 50.0, 1005.0), True),
+        ("centroid_tetrahedrons", Point(40.0, 51.0, 1005.0), True),
         ("centroid_tetrahedrons", Point(99.0, 50.0, 1005.0), True),
         ("centroid_tetrahedrons", Point(50.0, 1.0, 1005.0), True),
         ("centroid_tetrahedrons", Point(50.0, 99.0, 1005.0), True),
@@ -97,9 +97,25 @@ def test_point_inside_hexahedron_methods(simple_grid, method, point, expected):
     cell_corners = simple_grid.get_cell_corners_from_ijk(0, 0, 0)
 
     result = _internal.geometry.is_point_in_hexahedron(point, cell_corners, method)
-    assert (
-        result == expected
-    ), f"Method {method} with point {point} returned {result}, expected {expected}"
+    assert result == expected, (
+        f"Method {method} with point {point} returned {result}, expected {expected}"
+    )
+
+
+@pytest.mark.parametrize(
+    "method, point, expected",
+    [
+        ("centroid_tetrahedrons", Point(40.0, 51.0, 1005.0), True),
+    ],
+)
+def test_point_inside_hexahedron_methods_special(simple_grid, method, point, expected):
+    """Test different methods for point-in-hexahedron with various test points."""
+    cell_corners = simple_grid.get_cell_corners_from_ijk(0, 0, 0)
+
+    result = _internal.geometry.is_point_in_hexahedron(point, cell_corners, method)
+    assert result == expected, (
+        f"Method {method} with point {point} returned {result}, expected {expected}"
+    )
 
 
 def test_point_inside_hexahedron_etc_speed(simple_grid):
@@ -158,9 +174,9 @@ def test_point_inside_simple_grid_cell(
     cell_corners = simple_grid.get_cell_corners_from_ijk(0, 0, 0)
 
     result = _internal.grid3d.is_point_in_cell(point, cell_corners)
-    assert (
-        result == expected_result
-    ), f"Failed for {description}: {point}, got {result}, expected {expected_result}"
+    assert result == expected_result, (
+        f"Failed for {description}: {point}, got {result}, expected {expected_result}"
+    )
 
 
 def test_point_inside_complex_grid(complex_grid):
@@ -228,7 +244,7 @@ def test_point_inside_thin_cell():
 
 
 def test_point_inside_deformed_case1_cell():
-    """Test with a degenerate cell (derformed)."""
+    """Test with a degenerate cell (deformed, case 1)."""
     # Create a custom cell that's very thin in z-direction
     p1 = Point(0.0, 0.0, 1000.0)
     p2 = Point(10.0, 0.0, 1000.0)
@@ -252,8 +268,8 @@ def test_point_inside_deformed_case1_cell():
 
 
 def test_point_inside_deformed_case2_cell():
-    """Test with a degenerate cell (derformed)."""
-    # Create a custom cell that's very thin in z-direction
+    """Test with a degenerate cell (deformed, case 2)."""
+    # Create a custom deformed cell that's very thin in z-direction
     p1 = Point(0.0, 0.0, 1000.0)
     p2 = Point(100.0, 0.0, 1000.0)
     p3 = Point(0.0, 100.0, 1000.0)
@@ -268,10 +284,14 @@ def test_point_inside_deformed_case2_cell():
 
     assert _internal.geometry.is_hexahedron_non_convex(cell_corners) is True
 
-    # # Test with point inside the thin cell
-    # inside_point = Point(5.0, 5.0, 1000.5)
-    # assert _internal.grid3d.is_point_in_cell(inside_point, cell_corners)
+    # Test with point inside the thin cell
+    inside_point = Point(50.0, 5.0, 1000.5)
+    assert _internal.grid3d.is_point_in_cell(inside_point, cell_corners)
 
-    # # Test with point that are in center excpet of collapsed 4'th corner
-    # outside_point = Point(50.0, 50.0, 1000.5)
-    # assert not _internal.grid3d.is_point_in_cell(outside_point, cell_corners)
+    # Test with point inside the thin cell, but close to boundary
+    inside_point = Point(49.99, 49.99, 1000.001)
+    assert _internal.grid3d.is_point_in_cell(inside_point, cell_corners)
+
+    # Test with point outside the thin cell, but close to boundary
+    my_point = Point(50.01, 50.01, 1000.001)
+    assert not _internal.grid3d.is_point_in_cell(my_point, cell_corners)

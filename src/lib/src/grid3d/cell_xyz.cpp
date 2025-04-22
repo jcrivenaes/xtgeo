@@ -126,13 +126,18 @@ is_point_in_cell(const xyz::Point &point, const CellCorners &corners)
     auto &logger = xtgeo::logging::LoggerManager::get("grid3d::is_point_in_cell");
 
     // Check if the cell is thin or normal, and use the appropriate method
-    if (is_cell_thin(corners)) {
-        // Check if the cell is thin, using special method
-        logger.debug("Cell is considered thin, using tetrahedron method.");
-        return geometry::is_point_in_hexahedron(point, corners, "tetrahedrons");
+    // if (is_cell_thin(corners)) {
+    //     // Check if the cell is thin, using special method
+    //     logger.debug("Cell is considered thin, using tetrahedron method.");
+    //     return geometry::is_point_in_hexahedron(point, corners, "tetrahedrons");
+    // }
+    if (geometry::is_hexahedron_non_convex(corners)) {
+        // Check if the cell is non-convex, using special method
+        logger.debug(
+          "Cell is considered non-convex, using centroid tetrahedron method.");
+        return geometry::is_point_in_hexahedron(point, corners,
+                                                "centroid_tetrahedrons");
     }
-
-    logger.debug("Cell is not considered thin, using ray casting method.");
 
     // For "normal" cells...
     return geometry::is_point_in_hexahedron(point, corners, "tetrahedrons");
