@@ -40,13 +40,18 @@ is_xy_point_in_cell(const double x,
                     int option);
 
 bool
-is_point_in_cell(const xyz::Point &point, const CellCorners &corners);
+is_point_in_cell(const xyz::Point &point,
+                 const CellCorners &corners,
+                 const std::string &method = "auto");
 
 double
 get_depth_in_cell(const double x,
                   const double y,
                   const CellCorners &corners,
                   int option);
+
+bool
+is_cell_non_convex(const CellCorners &corners);
 
 // =====================================================================================
 // OPERATIONS ON MULTIPLE CELLS/GRID
@@ -151,10 +156,13 @@ init(py::module &m)
                  "Get a vector containing the minmax of a single corner set");
     m_grid3d.def("get_cell_bounding_box", &get_cell_bounding_box,
                  "Get the bounding box for a cell");
+    m_grid3d.def("is_cell_non_convex", &is_cell_non_convex,
+                 "Check if a cell is non-convex");
     m_grid3d.def("is_xy_point_in_cell", &is_xy_point_in_cell,
                  "Determine if a XY point is inside a cell, top or base.");
     m_grid3d.def("is_point_in_cell", &is_point_in_cell,
-                 "Determine if a point XYZ is inside a cell, in 3D");
+                 "Determine if a point XYZ is inside a cell, in 3D", py::arg("point"),
+                 py::arg("corners"), py::arg("method") = "auto");
     m_grid3d.def("get_depth_in_cell", &get_depth_in_cell,
                  "Determine the interpolated cell face Z from XY, top or base.");
     m_grid3d.def("process_edges_rmsapi", &process_edges_rmsapi, "Edge prosessing...");

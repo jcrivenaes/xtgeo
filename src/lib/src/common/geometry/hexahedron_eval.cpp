@@ -46,14 +46,86 @@ scale(const xyz::Point &a, double s)
 }
 
 /**
+ * @brief Faster test for convexity of a hexahedron involving point-plane
+ *        distance checks.
+ * @param corners The 8 corners of the hexahedron
+ * @return true if the cell is non-convex, false if it is convex
+ */
+static bool
+is_hexahedron_non_convex_test1(const HexahedronCorners &corners)
+{
+    // Create an array of vertices for easier access
+    std::array<xyz::Point, 8> vertices = { corners.upper_sw, corners.upper_se,
+                                           corners.upper_ne, corners.upper_nw,
+                                           corners.lower_sw, corners.lower_se,
+                                           corners.lower_ne, corners.lower_nw };
+
+    // Define faces with consistent outward-pointing normal winding order
+    const std::array<std::array<int, 4>, 6> faces = { {
+      { 4, 7, 6, 5 },  // bottom face
+      { 0, 1, 2, 3 },  // top face
+      { 4, 5, 1, 0 },  // front face
+      { 5, 6, 2, 1 },  // right face
+      { 6, 7, 3, 2 },  // back face
+      { 7, 4, 0, 3 }   // left face
+    } };
+
+    const double POINT_PLANE_TOLERANCE = 1e-9;  // Tolerance for point-plane distance
+
+    // Iterate over each face
+    for (const auto &face : faces) {
+        const xyz::Point &p0 = vertices[face[0]];
+        const xyz::Point &p1 = vertices[face[1]];
+        const xyz::Point &p2 = vertices[face[2]];
+
+        // Calculate the normal of the face using the cross product
+        xyz::Point edge1 = subtract(p1, p0);
+        xyz::Point edge2 = subtract(p2, p0);
+        xyz::Point normal = cross_product(edge1, edge2);
+
+        // Check the sign of the dot product for all other vertices
+        double reference_sign = 0.0;
+        for (size_t i = 0; i < vertices.size(); ++i) {
+            // Skip vertices that are part of the current face
+            if (i == face[0] || i == face[1] || i == face[2] || i == face[3]) {
+                continue;
+            }
+
+            // Calculate the vector from the face to the vertex
+            xyz::Point vec = subtract(vertices[i], p0);
+
+            // Calculate the dot product with the face normal
+            double dot = dot_product(vec, normal);
+
+            // Determine the sign of the dot product
+            if (std::abs(dot) > POINT_PLANE_TOLERANCE) {
+                double sign = (dot > 0) ? 1.0 : -1.0;
+
+                // If the reference sign is not set, initialize it
+                if (reference_sign == 0.0) {
+                    reference_sign = sign;
+                }
+                // If the sign differs from the reference, the cell is non-convex
+                else if (sign != reference_sign) {
+                    return true;  // Non-convex
+                }
+            }
+        }
+    }
+
+    // If all vertices are on the same side of all face planes, the cell is convex
+    return false;
+}
+
+/**
  * Determines if a hexahedral cell is non-convex.
  * Checks for non-planar faces and whether the centroid lies inside all face planes.
  *
  * @param corners The 8 corners of the hexahedron
  * @return true if the cell is non-convex, false if it is convex
  */
-bool
-is_hexahedron_non_convex(const grid3d::CellCorners &corners)
+static bool
+is_hexahedron_non_convex_test2(const HexahedronCorners &corners)
 {
     // Create more accessible array of vertices
     std::array<xyz::Point, 8> vertices = { corners.upper_sw, corners.upper_se,
@@ -138,5 +210,77 @@ is_hexahedron_non_convex(const grid3d::CellCorners &corners)
     // Cell passed all tests, it's convex
     return false;
 }
+
+/**
+ * @brief Check if a hexahedron is non-convex.
+ * @param corners The 8 corners of the hexahedron
+ * @return true if the cell is non-convex, false if it is convex
+ */
+bool
+is_hexahedron_non_convex(const HexahedronCorners &corners)
+{
+    // Check if the hexahedron is non-convex using the first test
+    if (is_hexahedron_non_convex_test1(corners)) {
+        return true;
+    }
+
+    // If the first test fails, check using the second test
+    return is_hexahedron_non_convex_test2(corners);
+}  // is_hexahedron_non_convex
+
+/*
+ * Get the minimum and maximum values of the corners of a hexahedron.
+ * @param CellCorners struct
+ * @return std::vector<double>
+ */
+std::vector<double>
+get_hexahedron_minmax(const HexahedronCorners &cell_corners)
+{
+    double xmin = std::numeric_limits<double>::max();
+    double xmax = std::numeric_limits<double>::min();
+    double ymin = std::numeric_limits<double>::max();
+    double ymax = std::numeric_limits<double>::min();
+    double zmin = std::numeric_limits<double>::max();
+    double zmax = std::numeric_limits<double>::min();
+
+    // List of all corners
+    std::array<xyz::Point, 8> corners = {
+        cell_corners.upper_sw, cell_corners.upper_se, cell_corners.upper_ne,
+        cell_corners.upper_nw, cell_corners.lower_sw, cell_corners.lower_se,
+        cell_corners.lower_ne, cell_corners.lower_nw
+    };
+
+    // Iterate over all corners to find min/max values
+    for (const auto &corner : corners) {
+        if (corner.x < xmin)
+            xmin = corner.x;
+        if (corner.x > xmax)
+            xmax = corner.x;
+        if (corner.y < ymin)
+            ymin = corner.y;
+        if (corner.y > ymax)
+            ymax = corner.y;
+        if (corner.z < zmin)
+            zmin = corner.z;
+        if (corner.z > zmax)
+            zmax = corner.z;
+    }
+
+    return { xmin, xmax, ymin, ymax, zmin, zmax };
+}
+
+/**
+ * @brief Get the bounding box for a cell, a wrapper for get_corners_minmax.
+ * @param CellCorners struct
+ * @return std::tuple<xyz::Point, xyz::Point> {min_point, max_point}
+ */
+std::tuple<xyz::Point, xyz::Point>
+get_hexahedron_bounding_box(const HexahedronCorners &corners)
+{
+    auto minmax = get_hexahedron_minmax(corners);
+    auto min_point = xyz::Point(minmax[0], minmax[2], minmax[4]);
+    auto max_point = xyz::Point(minmax[1], minmax[3], minmax[5]);
+    return std::make_tuple(min_point, max_point);
+}  // get_hexahedron_bounding_box
 
 }  // namespace xtgeo::geometry

@@ -71,76 +71,42 @@ is_xy_point_in_cell(const double x,
     return false;  // unreachable
 }  // is_xy_point_in_cell
 
-static bool
-is_cell_thin(const CellCorners &corners)
-{
-    auto &logger = xtgeo::logging::LoggerManager::get("grid3d::is_cell_thin");
-    // must check all corners
-
-    double sw_dz = std::abs(corners.upper_sw.z - corners.lower_sw.z);
-    double se_dz = std::abs(corners.upper_se.z - corners.lower_se.z);
-    double nw_dz = std::abs(corners.upper_nw.z - corners.lower_nw.z);
-    double ne_dz = std::abs(corners.upper_ne.z - corners.lower_ne.z);
-
-    double dz_avg = (sw_dz + se_dz + nw_dz + ne_dz) / 4.0;
-    double area_upper = geometry::quadrilateral_area(
-      corners.upper_sw, corners.upper_se, corners.upper_ne, corners.upper_nw);
-    double area_lower = geometry::quadrilateral_area(
-      corners.lower_sw, corners.lower_se, corners.lower_ne, corners.lower_nw);
-
-    double dxy_avg = std::sqrt(0.5 * (area_lower + area_upper));
-
-    double dz_factor = dz_avg / dxy_avg;
-
-    // criteria for thin: cell thickness is less than 5% of XY dimensions in average
-    // or cell thickness is less than 1% of XY dimensions in corners
-    double thin_factor_avg = 0.05 * dxy_avg;
-    double minimum_dz = 0.01 * dxy_avg;  // ie if cell is 50m wide, use 0.5m as minimum
-
-    if (dz_factor < thin_factor_avg) {
-        return true;
-    }
-
-    // Check if any of the corners are too thin
-    if (sw_dz < minimum_dz || se_dz < minimum_dz || nw_dz < minimum_dz ||
-        ne_dz < minimum_dz) {
-        return true;
-    }
-
-}  // is_cell_thin
-
 /**
  * @brief Check if a point is inside a cell defined by its corners.
  *
- * Uses one method for normal cells and a different method for thin cells.
- * The function first checks if the point is within the bounding box of the cell for
- * quick rejection.
+ * Uses one method for normal cells and a different method for "distorted" cells.
  *
  * @param point The point to check
  * @param corners The corners of the cell
  * @return true if the point is inside the cell, false otherwise
  */
 bool
-is_point_in_cell(const xyz::Point &point, const CellCorners &corners)
+is_point_in_cell(const xyz::Point &point,
+                 const CellCorners &corners,
+                 const std::string &method)
 {
     auto &logger = xtgeo::logging::LoggerManager::get("grid3d::is_point_in_cell");
 
-    // Check if the cell is thin or normal, and use the appropriate method
-    // if (is_cell_thin(corners)) {
-    //     // Check if the cell is thin, using special method
-    //     logger.debug("Cell is considered thin, using tetrahedron method.");
-    //     return geometry::is_point_in_hexahedron(point, corners, "tetrahedrons");
-    // }
-    if (geometry::is_hexahedron_non_convex(corners)) {
+    // convert to right handed system
+    auto hexahedron_corners = corners.to_hexahedron_corners();
+    auto rh_point = xyz::Point(point.x, point.y, -point.z);
+
+    if (method != "auto") {
+        return geometry::is_point_in_hexahedron(rh_point, hexahedron_corners, method);
+    }
+
+    // when auto, check if the cell is distorted
+    if (geometry::is_hexahedron_non_convex(hexahedron_corners)) {
         // Check if the cell is non-convex, using special method
         logger.debug(
           "Cell is considered non-convex, using centroid tetrahedron method.");
-        return geometry::is_point_in_hexahedron(point, corners,
+        return geometry::is_point_in_hexahedron(rh_point, hexahedron_corners,
                                                 "centroid_tetrahedrons");
     }
 
     // For "normal" cells...
-    return geometry::is_point_in_hexahedron(point, corners, "tetrahedrons");
+    return geometry::is_point_in_hexahedron(rh_point, hexahedron_corners,
+                                            "tetrahedrons");
 }
 
 }  // namespace xtgeo::grid3d

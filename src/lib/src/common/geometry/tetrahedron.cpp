@@ -111,8 +111,8 @@ is_point_in_tetrahedron(const xyz::Point &p,
                         const xyz::Point &d)
 {
 
-    auto &logger =
-      xtgeo::logging::LoggerManager::get("geometry::is_point_in_tetrahedron");
+    // auto &logger =
+    //   xtgeo::logging::LoggerManager::get("geometry::is_point_in_tetrahedron");
 
     const double RELATIVE_EPSILON = 1e-8;
 
@@ -125,8 +125,9 @@ is_point_in_tetrahedron(const xyz::Point &p,
     double v3 = signed_tetrahedron_volume(a, b, p, d);
     double v4 = signed_tetrahedron_volume(a, b, c, p);
 
-    logger.debug("Tetrahedron volumes: v0 = {}, v1 = {}, v2 = {}, v3 = {}, v4 = {}", v0,
-                 v1, v2, v3, v4);
+    // logger.debug("Tetrahedron volumes: v0 = {}, v1 = {}, v2 = {}, v3 = {}, v4 = {}",
+    // v0,
+    //              v1, v2, v3, v4);
 
     // Calculate the relative tolerance
     std::array<double, 5> volumes = { v0, v1, v2, v3, v4 };
@@ -134,7 +135,7 @@ is_point_in_tetrahedron(const xyz::Point &p,
 
     // Check for degenerate tetrahedron
     if (std::abs(v0) < relative_tolerance) {
-        logger.debug("Degenerate tetrahedron detected (v0 = {})", v0);
+        // logger.debug("Degenerate tetrahedron detected (v0 = {})", v0);
 
         // Degenerate tetrahedron: Check if the point lies in the plane of the
         // tetrahedron

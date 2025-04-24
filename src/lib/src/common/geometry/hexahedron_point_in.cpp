@@ -207,6 +207,53 @@ is_point_in_hexahedron_using_centroid_tetrahedrons(
 
     return false;
 }
+
+static bool
+is_point_in_non_convex_hexahedron(const xyz::Point &point,
+                                  const std::array<xyz::Point, 8> &vertices)
+{
+
+    auto &logger =
+      xtgeo::logging::LoggerManager::get("geometry::is_point_in_non_convex_hexahedron");
+    if (PYTHON_LOGGING_DEBUG()) {
+        logger.debug(
+          "Using centroid tetrahedrons method for point-in-hexahedron check.");
+    }
+    // Calculate the centroid of the hexahedron
+    xyz::Point centroid = { 0.0, 0.0, 0.0 };
+    for (const auto &v : vertices) {
+        centroid.x += v.x;
+        centroid.y += v.y;
+        centroid.z += v.z;
+    }
+    centroid.x /= 8.0;
+    centroid.y /= 8.0;
+    centroid.z /= 8.0;
+
+    // Dynamically decompose the hexahedron into tetrahedrons
+    const std::array<std::array<int, 4>, 12> dynamic_tetrahedrons = {
+        // Top and bottom faces
+        std::array<int, 4>{ 0, 1, 2, 4 }, std::array<int, 4>{ 0, 2, 3, 4 },
+        std::array<int, 4>{ 4, 5, 6, 7 }, std::array<int, 4>{ 4, 6, 7, 0 },
+        // Front and back faces
+        std::array<int, 4>{ 0, 1, 5, 4 }, std::array<int, 4>{ 1, 2, 6, 5 },
+        std::array<int, 4>{ 2, 3, 7, 6 }, std::array<int, 4>{ 3, 0, 4, 7 },
+        // Centroid-based tetrahedrons
+        std::array<int, 4>{ 0, 1, 2, 8 }, std::array<int, 4>{ 2, 3, 0, 8 },
+        std::array<int, 4>{ 4, 5, 6, 8 }, std::array<int, 4>{ 6, 7, 4, 8 }
+    };
+
+    // Check if the point is inside any tetrahedron
+    for (const auto &tetra : dynamic_tetrahedrons) {
+        if (is_point_in_tetrahedron(point, vertices[tetra[0]], vertices[tetra[1]],
+                                    vertices[tetra[2]], centroid)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 static xyz::Point
 calculate_normal(const xyz::Point &p1, const xyz::Point &p2, const xyz::Point &p3)
 {
@@ -323,7 +370,7 @@ is_point_in_hexahedron_using_tetrahedrons(const xyz::Point &point_rh,
 /**
  * @brief A central function where one can select appropriate method
     * for point-in-cell test.
-    * @param point The point to test
+    * @param point The point to test, negated Z compared to python
     * @param corners The 8 corners of the hexahedron
     * @param method The method to use for the test
     * @return true if the point is inside the hexahedron, false otherwise
@@ -333,13 +380,14 @@ is_point_in_hexahedron_using_tetrahedrons(const xyz::Point &point_rh,
  */
 bool
 is_point_in_hexahedron(const xyz::Point &point,
-                       const CellCorners &corners,
+                       const HexahedronCorners &hexahedron_corners,
                        const std::string &method)
 {
-    // auto &logger = xtgeo::logging::LoggerManager::get("is_point_in_hexahedron");
+    auto &logger = xtgeo::logging::LoggerManager::get("is_point_in_hexahedron");
 
     // Quick rejection test using bounding box; this is independent of the method
-    auto [min_point, max_point] = grid3d::get_cell_bounding_box(corners);
+    auto [min_point, max_point] = get_hexahedron_bounding_box(hexahedron_corners);
+
     double epsilon =
       1e-8 * std::max({ max_point.x - min_point.x, max_point.y - min_point.y,
                         max_point.z - min_point.z });
@@ -351,29 +399,27 @@ is_point_in_hexahedron(const xyz::Point &point,
         return false;
     }
 
-    // make corners into vertices using right-handed coordinates, i.e. negate
-    // Z-coordinates and arrange counter clock wise seen from top
-    // logger.debug("Using method: {}", method);
     std::array<xyz::Point, 8> vertices = {
-        xyz::Point{ corners.upper_sw.x, corners.upper_sw.y, -corners.upper_sw.z },
-        xyz::Point{ corners.upper_se.x, corners.upper_se.y, -corners.upper_se.z },
-        xyz::Point{ corners.upper_ne.x, corners.upper_ne.y, -corners.upper_ne.z },
-        xyz::Point{ corners.upper_nw.x, corners.upper_nw.y, -corners.upper_nw.z },
-        xyz::Point{ corners.lower_sw.x, corners.lower_sw.y, -corners.lower_sw.z },
-        xyz::Point{ corners.lower_se.x, corners.lower_se.y, -corners.lower_se.z },
-        xyz::Point{ corners.lower_ne.x, corners.lower_ne.y, -corners.lower_ne.z },
-        xyz::Point{ corners.lower_nw.x, corners.lower_nw.y, -corners.lower_nw.z }
+        hexahedron_corners.upper_sw, hexahedron_corners.upper_se,
+        hexahedron_corners.upper_ne, hexahedron_corners.upper_nw,
+        hexahedron_corners.lower_sw, hexahedron_corners.lower_se,
+        hexahedron_corners.lower_ne, hexahedron_corners.lower_nw
     };
 
-    // negate Z-coordinate of point to match right-handed system
-    xyz::Point point_rh = { point.x, point.y, -point.z };
-
     if (method == "ray_casting") {
-        return is_point_in_hexahedron_using_raycasting(point_rh, vertices);
+        logger.debug("Using ray casting method for point-in-hexahedron check.");
+        return is_point_in_hexahedron_using_raycasting(point, vertices);
     } else if (method == "tetrahedrons") {
-        return is_point_in_hexahedron_using_tetrahedrons(point_rh, vertices);
+        logger.debug("Using tetrahedrons method for point-in-hexahedron check.");
+        return is_point_in_hexahedron_using_tetrahedrons(point, vertices);
     } else if (method == "centroid_tetrahedrons") {
-        return is_point_in_hexahedron_using_centroid_tetrahedrons(point_rh, vertices);
+        logger.debug(
+          "Using centroid tetrahedrons method for point-in-hexahedron check.");
+        return is_point_in_hexahedron_using_centroid_tetrahedrons(point, vertices);
+    } else if (method == "non_convex") {
+        logger.debug(
+          "Using centroid tetrahedrons method for point-in-hexahedron check.");
+        return is_point_in_non_convex_hexahedron(point, vertices);
     } else {
         throw std::invalid_argument("Invalid method for point-in-cell test");
     }

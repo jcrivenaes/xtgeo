@@ -182,4 +182,11 @@ get_depth_in_cell(const double x,
     return depth;
 }  // get_depth_in_cell
 
+bool
+is_cell_non_convex(const CellCorners &corners)
+{
+    // Check if the cell is non-convex
+    return geometry::is_hexahedron_non_convex(corners.to_hexahedron_corners());
+}  // is_cell_non_convex
+
 }  // namespace xtgeo::grid3d

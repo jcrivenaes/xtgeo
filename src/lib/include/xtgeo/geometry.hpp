@@ -201,10 +201,8 @@ find_rect_corners_from_center(const double x,
 // =====================================================================================
 
 inline double
-hexahedron_dz(const grid3d::CellCorners &corners)
+hexahedron_dz(const HexahedronCorners &corners)
 {
-    // TODO: This does not account for overall zflip ala Petrel or cells that
-    // are malformed
     double dzsum = 0.0;
     dzsum += std::abs(corners.upper_sw.z - corners.lower_sw.z);
     dzsum += std::abs(corners.upper_se.z - corners.lower_se.z);
@@ -214,14 +212,23 @@ hexahedron_dz(const grid3d::CellCorners &corners)
 }
 
 double
+hexahedron_volume(const HexahedronCorners &corners, const int precision);
+// overload for CellCorners
+double
 hexahedron_volume(const grid3d::CellCorners &corners, const int precision);
 
 bool
 is_point_in_hexahedron(const xyz::Point &point,
-                       const grid3d::CellCorners &corners,
+                       const HexahedronCorners &corners,
                        const std::string &method);
 bool
-is_hexahedron_non_convex(const grid3d::CellCorners &corners);
+is_hexahedron_non_convex(const HexahedronCorners &corners);
+
+std::vector<double>
+get_hexahedron_minmax(const HexahedronCorners &corners);
+
+std::tuple<xyz::Point, xyz::Point>
+get_hexahedron_bounding_box(const HexahedronCorners &corners);
 
 // =====================================================================================
 // PYTHON BINDINGS
@@ -230,8 +237,13 @@ inline void
 init(py::module &m)
 {
     auto m_geometry = m.def_submodule("geometry", "Internal geometric functions");
-    m_geometry.def("hexahedron_volume", &hexahedron_volume,
-                   "Estimate the volume of a hexahedron i.e. a cornerpoint cell.");
+    m_geometry.def(
+      "hexahedron_volume",
+      [](const grid3d::CellCorners &corners, int precision) {
+          return hexahedron_volume(corners, precision);
+      },
+      "Estimate the volume of a hexahedron i.e. a cornerpoint cell using "
+      "CornerPoints.");
     m_geometry.def("is_xy_point_in_polygon", &is_xy_point_in_polygon,
                    "Return True if a XY point is inside a polygon seen from above, "
                    "False otherwise.");

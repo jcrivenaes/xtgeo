@@ -32,7 +32,7 @@ using grid3d::CellCorners;
  * @return The volume of the hexahadron
  */
 double
-hexahedron_volume(const CellCorners &corners, const int precision)
+hexahedron_volume(const HexahedronCorners &corners, const int precision)
 {
     // Avoid cells that collapsed in some way
     if (hexahedron_dz(corners) < numerics::EPSILON) {
@@ -68,5 +68,14 @@ hexahedron_volume(const CellCorners &corners, const int precision)
     }
     return vol;
 }
+// Overload for CellCorners
+double
+hexahedron_volume(const CellCorners &cell_corners, const int precision)
+{
+    // Convert CellCorners to HexahedronCorners
+    HexahedronCorners hexa_corners = cell_corners.to_hexahedron_corners();
 
+    // Call the HexahedronCorners version
+    return hexahedron_volume(hexa_corners, precision);
+}
 }  // namespace xtgeo::geometry
