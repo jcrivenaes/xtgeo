@@ -281,7 +281,7 @@ def test_point_in_cell_compare_rms(testdata_path):
     p1 = xtgeo.Points(
         values=pointset, xname="X", yname="Y", zname="Z", attributes=attrs
     )
-
+    print(p1.dataframe)
     grd = xtgeo.grid_from_file(testdata_path / QCGRID)
     dfr = grd.get_ijk_from_points(p1)
 

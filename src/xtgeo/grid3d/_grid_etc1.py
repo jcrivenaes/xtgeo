@@ -461,7 +461,7 @@ def get_ijk(
     return ix, jy, kz
 
 
-def get_ijk_from_points(
+def get_ijk_from_point_old(
     self: Grid,
     points: Points,
     activeonly: bool = True,
@@ -475,7 +475,8 @@ def get_ijk_from_points(
     """Get I J K indices as a list of tuples or a dataframe.
 
     It is here tried to get fast execution. This requires a preprosessing
-    of the grid to store a onlayer version, and maps with IJ positions
+    of the grid to store a onelayer version, and maps with IJ positions. This is
+    done as cache variables in the grid object.
     """
     logger.info("Getting IJK indices from Points...")
 
@@ -557,6 +558,113 @@ def get_ijk_from_points(
         return mydataframe
 
     return list(mydataframe.itertuples(index=False, name=None))
+
+
+def get_ijk_from_points(
+    self: Grid,
+    points: Points,
+    activeonly: bool = True,
+    zerobased: bool = False,
+    dataframe: bool = True,
+    includepoints: bool = True,
+    columnnames: tuple[str, str, str] = ("IX", "JY", "KZ"),
+    fmt: Literal["int", "float"] = "int",
+    undef: int = -1,
+) -> pd.DataFrame | list:
+    """Get I J K indices as a list of tuples or a dataframe.
+
+    It is here tried to get fast execution. This requires a preprosessing
+    of the grid to store a onelayer version, and maps with IJ positions. This is
+    done as cache variables in the grid object.
+    """
+    logger.info("Getting IJK indices from Points...")
+
+    actnumoption = 1 if activeonly else 0
+
+    self._xtgformat2()
+
+    cache = self._get_cache()
+
+    xmin, ymin, zmin, xmax, ymax, zmax = cache.bbox
+
+    points_df = points.get_dataframe(copy=True)
+    logger.debug("Number of points prior to filtering bounding box", points_df.size)
+
+    # remove points outside the grid bounds
+    points_df = points_df[points_df[points.xname].between(xmin, xmax)]
+    points_df = points_df[points_df[points.yname].between(ymin, ymax)]
+    points_df = points_df[points_df[points.zname].between(zmin, zmax)]
+    logger.debug("Number of points after filtering bounding box", points_df.size)
+
+    arrsize = points_df[points.xname].values.size
+
+    useflip = -1 if self.ijk_handedness == "left" else 1
+
+    logger.info("Grid FLIP for C code is %s", useflip)
+
+    # _, iarr, jarr, karr = _cxtgeo.grd3d_points_ijk_cells(
+    #     points_df[points.xname].values,
+    #     points_df[points.yname].values,
+    #     points_df[points.zname].values,
+    #     cache.top_depth.ncol,
+    #     cache.top_depth.nrow,
+    #     cache.top_depth.xori,
+    #     cache.top_depth.yori,
+    #     cache.top_depth.xinc,
+    #     cache.top_depth.yinc,
+    #     cache.top_depth.rotation,
+    #     cache.top_depth.yflip,
+    #     cache.top_i_index_carr,
+    #     cache.top_j_index_carr,
+    #     cache.base_i_index_carr,
+    #     cache.base_j_index_carr,
+    #     self.ncol,
+    #     self.nrow,
+    #     self.nlay,
+    #     self._coordsv.ravel(),
+    #     self._zcornsv.ravel(),
+    #     self._actnumsv.ravel(),
+    #     cache.onegrid._zcornsv,
+    #     actnumoption,
+    #     arrsize,
+    #     arrsize,
+    #     arrsize,
+    # )
+    # logger.info("Running C routine... DONE")
+
+    # if zerobased:
+    #     # zero based cell indexing
+    #     iarr -= 1
+    #     jarr -= 1
+    #     karr -= 1
+
+    # proplist = {}
+    # if includepoints:
+    #     proplist["X_UTME"] = points_df[points.xname].values
+    #     proplist["Y_UTME"] = points_df[points.yname].values
+    #     proplist["Z_TVDSS"] = points_df[points.zname].values
+
+    # proplist[columnnames[0]] = iarr
+    # proplist[columnnames[1]] = jarr
+    # proplist[columnnames[2]] = karr
+
+    # mydataframe = pd.DataFrame.from_dict(proplist)
+    # mydataframe = mydataframe.replace(UNDEF_INT, -1)
+
+    # if fmt == "float":
+    #     mydataframe[columnnames[0]] = mydataframe[columnnames[0]].astype("float")
+    #     mydataframe[columnnames[1]] = mydataframe[columnnames[1]].astype("float")
+    #     mydataframe[columnnames[2]] = mydataframe[columnnames[2]].astype("float")
+
+    # if undef != -1:
+    #     mydataframe[columnnames[0]] = mydataframe[columnnames[0]].replace(-1, undef)
+    #     mydataframe[columnnames[1]] = mydataframe[columnnames[1]].replace(-1, undef)
+    #     mydataframe[columnnames[2]] = mydataframe[columnnames[2]].replace(-1, undef)
+
+    # if dataframe:
+    #     return mydataframe
+
+    # return list(mydataframe.itertuples(index=False, name=None))
 
 
 @lru_cache(maxsize=1)

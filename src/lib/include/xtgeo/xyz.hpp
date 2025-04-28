@@ -29,6 +29,9 @@ init(py::module &m)
       .def("add_point", &xtgeo::xyz::Polygon::add_point)
       .def("size", &xtgeo::xyz::Polygon::size)
       .def_readonly("xyz", &xtgeo::xyz::Polygon::points);
+
+    // Bind PointSet as an alias for Polygon
+    m_xyz.attr("PointSet") = m_xyz.attr("Polygon");
 }
 
 }  // namespace xyz

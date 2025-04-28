@@ -62,6 +62,7 @@ pybind11_add_module(
   "${SRC}/grid3d/cell.cpp"
   "${SRC}/grid3d/cell_xyz.cpp"
   "${SRC}/grid3d/grid.cpp"
+  "${SRC}/grid3d/grid_xyz_in.cpp"
   "${SRC}/grid3d/grid_reorganize.cpp"
   "${SRC}/grid3d/grid_surf_oper.cpp"
   "${SRC}/cube/cube.cpp"

@@ -94,6 +94,17 @@ adjust_boxgrid_layers_from_regsurfs(Grid &grd,
                                     const std::vector<regsurf::RegularSurface> &rsurfs,
                                     const double tolerance = numerics::TOLERANCE);
 
+Grid
+extract_onelayer_grid(const Grid &original_grid);
+
+std::tuple<xyz::Point, xyz::Point>
+get_bounding_box(const Grid &grid);
+
+std::tuple<py::array_t<int>, py::array_t<int>, py::array_t<int>>
+get_indices_from_pointset(const Grid &grid,
+                          const xyz::PointSet &points,
+                          const Grid &one_grid);
+
 // =====================================================================================
 // PYTHON BINDINGS, IF NEEDED
 // =====================================================================================
@@ -129,6 +140,10 @@ init(py::module &m)
       .def("adjust_boxgrid_layers_from_regsurfs", &adjust_boxgrid_layers_from_regsurfs,
            "Adjust layers in a boxgrid given a list of regular surfaces.",
            py::arg("rsurfs"), py::arg("tolerance") = numerics::TOLERANCE)
+      .def("extract_onelayer_grid", &extract_onelayer_grid, "Get a a onelayer grid")
+      .def("get_bounding_box", &get_bounding_box, "Get bounding box of full grid")
+      .def("get_indices_from_pointset", &get_indices_from_pointset,
+           "Get the indices of a point set in the grid")
 
       ;
 

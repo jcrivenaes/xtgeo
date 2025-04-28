@@ -15,9 +15,9 @@
 // =====================================================================================
 // NOTE CAREFULLY!
 //
-// XTGeo and C may use two different Z-coordinate conventions:
+// XTGeo and C **may** (or not) use two different Z-coordinate conventions:
 // - In Python: Z increases downward (geological depth convention), left-handed XYZ
-// - In C++: Z follows normally python, but some stcructs are defined with Z increasing
+// - In C++: Z follows normally python, but some structs are defined with Z increasing
 //   upward (geometrical convention) -> right-handed XYZ
 // =====================================================================================
 
@@ -84,10 +84,21 @@ struct Polygon
     // Method to add a point to the polygon
     void add_point(const Point &point) { points.push_back(point); }
 
+    // Method to get a point by index
+    const Point &get_point(size_t index) const
+    {
+        if (index >= points.size()) {
+            throw std::out_of_range("Index out of range");
+        }
+        return points[index];
+    }
+
     // Method to get the number of points in the polygon
     size_t size() const { return points.size(); }
 
 };  // struct Polygon
+
+using PointSet = Polygon;  // alias for Polygon where the points are not ordered
 
 }  // namespace xyz
 // =====================================================================================
@@ -137,8 +148,9 @@ struct HexahedronCorners
                       xyz::Point lse,
                       xyz::Point lne,
                       xyz::Point lnw) :
-      upper_sw(usw), upper_se(use), upper_ne(une), upper_nw(unw), lower_sw(lsw),
-      lower_se(lse), lower_ne(lne), lower_nw(lnw)
+      upper_sw(usw),
+      upper_se(use), upper_ne(une), upper_nw(unw), lower_sw(lsw), lower_se(lse),
+      lower_ne(lne), lower_nw(lnw)
     {
         validate_z_coordinates();
     }
@@ -315,8 +327,9 @@ struct CellCorners
                 xyz::Point lse,
                 xyz::Point lnw,
                 xyz::Point lne) :
-      upper_sw(usw), upper_se(use), upper_nw(unw), upper_ne(une), lower_sw(lsw),
-      lower_se(lse), lower_nw(lnw), lower_ne(lne)
+      upper_sw(usw),
+      upper_se(use), upper_nw(unw), upper_ne(une), lower_sw(lsw), lower_se(lse),
+      lower_nw(lnw), lower_ne(lne)
     {
     }
 
@@ -411,8 +424,8 @@ struct RegularSurface
                    double xinc,
                    double yinc,
                    double rotation) :
-      ncol(ncol), nrow(nrow), xori(xori), yori(yori), xinc(xinc), yinc(yinc),
-      rotation(rotation)
+      ncol(ncol),
+      nrow(nrow), xori(xori), yori(yori), xinc(xinc), yinc(yinc), rotation(rotation)
     {
     }
 

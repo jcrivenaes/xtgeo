@@ -9,11 +9,14 @@ import numpy as np
 import numpy.ma as ma
 
 import xtgeo
+import xtgeo._internal as _internal  # type: ignore
+from xtgeo import _cxtgeo
 from xtgeo.common import XTGDescription, null_logger
 from xtgeo.common.exceptions import InvalidFileFormatError
 from xtgeo.common.sys import generic_hash
 from xtgeo.common.types import Dimensions
 from xtgeo.io._file import FileFormat, FileWrapper
+from xtgeo.surface.regular_surface import surface_from_grid3d
 
 from . import (
     _grid3d_fence,
@@ -297,6 +300,108 @@ def grid_from_surfaces(
     )
 
 
+class _GridCache:
+    """Internal class for caching data related to grid.
+
+    For example special grid, maps that are applied to speed up certain operations.
+
+    The "onegrid" is a 3D grid with only one layer, utulizing that a corner point grid
+    has straight pillars. The "top" and "base" surfaces are the top and base of the
+    onelayer grid, and extracting indices may be useful for some operations.
+
+    """
+
+    def __init__(self, grid: Grid) -> None:
+        self.onegrid: Grid = None
+        self.bbox: tuple[float, float, float, float, float, float] = None
+        self.top_depth: xtgeo.RegularSurface = None
+        self.base_depth: xtgeo.RegularSurface = None
+        self.top_i_index: xtgeo.RegularSurface = None
+        self.top_j_index: xtgeo.RegularSurface = None
+        self.base_i_index: xtgeo.RegularSurface = None
+        self.base_j_index: xtgeo.RegularSurface = None
+
+        # these are special SWIG arrays kept until necessary SWIG methods are replaced
+        # with pypind 11 / C++
+        self.top_i_index_carr: Any = None
+        self.top_j_index_carr: Any = None
+        self.base_i_index_carr: Any = None
+        self.base_j_index_carr: Any = None
+
+        # initialize the cache with a one layer grid and surfaces
+        self._initialize(grid)
+
+    @staticmethod
+    def _get_swig_carr_double(surface: xtgeo.RegularSurface) -> Any:
+        carr = _cxtgeo.new_doublearray(surface.ncol * surface.nrow)
+        _cxtgeo.swig_numpy_to_carr_1d(surface.get_values1d(), carr)
+        return carr
+
+    def _initialize(self, grid: Grid) -> None:
+        """Initialize the cache with a one layer grid and surfaces."""
+        grid_cpp = _internal.grid3d.Grid(grid)
+        new_grid_cpp = grid_cpp.extract_onelayer_grid()
+
+        one = self.onegrid = Grid(
+            coordsv=new_grid_cpp.coordsv,
+            zcornsv=new_grid_cpp.zcornsv,
+            actnumsv=new_grid_cpp.actnumsv,
+        )
+
+        minv, maxv = new_grid_cpp.get_bounding_box()
+        self.bbox = (minv.x, minv.y, minv.z, maxv.x, maxv.y, maxv.z)
+
+        self.top_depth = surface_from_grid3d(
+            one, where="top", property="depth", rfactor=4, index_position="top"
+        )
+        self.base_depth = surface_from_grid3d(
+            one, where="base", property="depth", rfactor=4, index_position="base"
+        )
+        self.top_i_index = surface_from_grid3d(
+            one, where="top", property="i", rfactor=4, index_position="top"
+        )
+        self.top_j_index = surface_from_grid3d(
+            one, where="top", property="j", rfactor=4, index_position="top"
+        )
+        self.base_i_index = surface_from_grid3d(
+            one, where="base", property="i", rfactor=4, index_position="base"
+        )
+        self.base_j_index = surface_from_grid3d(
+            one, where="base", property="j", rfactor=4, index_position="base"
+        )
+
+        # need to fill (interpolate) eventual holes in maps
+        self.top_depth.fill()
+        self.base_depth.fill()
+        self.top_i_index.fill()
+        self.top_j_index.fill()
+        self.base_i_index.fill()
+        self.base_j_index.fill()
+
+        # these are special SWIG array objects kept until necessary SWIG
+        # methods are replaced
+        self.top_i_index_carr = self._get_swig_carr_double(self.top_i_index)
+        self.top_j_index_carr = self._get_swig_carr_double(self.top_j_index)
+        self.base_i_index_carr = self._get_swig_carr_double(self.base_i_index)
+        self.base_j_index_carr = self._get_swig_carr_double(self.base_j_index)
+
+    def clear(self) -> None:
+        """Clear the cache."""
+        self.onegrid = None
+        self.bbox = None
+        self.top_depth = None
+        self.base_depth = None
+        self.top_i_index = None
+        self.top_j_index = None
+        self.base_i_index = None
+        self.base_j_index = None
+
+        self.top_i_index_carr = None
+        self.top_j_index_carr = None
+        self.base_i_index_carr = None
+        self.base_j_index_carr = None
+
+
 # --------------------------------------------------------------------------------------
 # Comment on dual porosity grids:
 #
@@ -451,7 +556,9 @@ class Grid(_Grid3D):
 
         self.units = units
 
-        self._tmp: dict = {}
+        self._cache: _GridCache | None = None
+
+        self._tmp = {}  # TMP!
 
     def __repr__(self) -> str:
         """The __repr__ method."""
@@ -470,6 +577,17 @@ class Grid(_Grid3D):
     def __hash__(self):
         """The __hash__ method."""
         return hash(self.generate_hash())
+
+    def _get_cache(self) -> _GridCache:
+        """Internal method to lazily initialize and access the cache."""
+        if self._cache is None:
+            self._cache = _GridCache(self)
+        return self._cache
+
+    def _clear_cache(self) -> None:
+        """Internal method to clear the cache."""
+        if self._cache is not None:
+            self._clear_cache()
 
     # ==================================================================================
     # Public Properties:
@@ -2047,12 +2165,12 @@ class Grid(_Grid3D):
         if self._xtgformat == 1:
             self._actnumsv = self._actnumsv.flatten()
 
-        self._tmp = {}
+        self._clear_cache()
 
     def inactivate_by_dz(self, threshold: float) -> None:
         """Inactivate cells thinner than a given threshold."""
         _grid_etc1.inactivate_by_dz(self, threshold)
-        self._tmp = {}
+        self._clear_cache()
 
     def inactivate_inside(
         self,
@@ -2081,7 +2199,7 @@ class Grid(_Grid3D):
         _grid_etc1.inactivate_inside(
             self, poly, layer_range=layer_range, inside=inside, force_close=force_close
         )
-        self._tmp = {}
+        self._clear_cache()
 
     def inactivate_outside(
         self,
@@ -2093,12 +2211,12 @@ class Grid(_Grid3D):
         self.inactivate_inside(
             poly, layer_range=layer_range, inside=False, force_close=force_close
         )
-        self._tmp = {}
+        self._clear_cache()
 
     def collapse_inactive_cells(self) -> None:
         """Collapse inactive layers where, for I J with other active cells."""
         _grid_etc1.collapse_inactive_cells(self)
-        self._tmp = {}
+        self._clear_cache()
 
     def crop(
         self,
@@ -2136,7 +2254,7 @@ class Grid(_Grid3D):
 
         """
         _grid_etc1.crop(self, (colcrop, rowcrop, laycrop), props=props)
-        self._tmp = {}
+        self._clear_cache()
 
     def reduce_to_one_layer(self) -> None:
         """Reduce the grid to one single layer.
@@ -2153,7 +2271,7 @@ class Grid(_Grid3D):
 
         """
         _grid_etc1.reduce_to_one_layer(self)
-        self._tmp = {}
+        self._clear_cache()
 
     def translate_coordinates(
         self,
@@ -2173,7 +2291,7 @@ class Grid(_Grid3D):
             RuntimeError: If translation goes wrong for unknown reasons
         """
         _grid_etc1.translate_coordinates(self, translate=translate, flip=flip)
-        self._tmp = {}
+        self._clear_cache()
 
     def reverse_row_axis(
         self, ijk_handedness: Literal["left", "right"] | None = None
@@ -2206,7 +2324,7 @@ class Grid(_Grid3D):
 
         """
         _grid_etc1.reverse_row_axis(self, ijk_handedness=ijk_handedness)
-        self._tmp = {}
+        self._clear_cache()
 
     def make_zconsistent(self, zsep: float | int = 1e-5) -> None:
         """Make the 3D grid consistent in Z, by a minimal gap (zsep).
@@ -2215,7 +2333,7 @@ class Grid(_Grid3D):
             zsep (float): Minimum gap
         """
         _grid_etc1.make_zconsistent(self, zsep)
-        self._tmp = {}
+        self._clear_cache()
 
     def convert_to_hybrid(
         self,
@@ -2270,7 +2388,7 @@ class Grid(_Grid3D):
             region=region,
             region_number=region_number,
         )
-        self._tmp = {}
+        self._clear_cache()
 
     def refine_vertically(
         self,
@@ -2324,7 +2442,7 @@ class Grid(_Grid3D):
 
         """
         _grid_refine.refine_vertically(self, rfactor, zoneprop=zoneprop)
-        self._tmp = {}
+        self._clear_cache()
 
     def report_zone_mismatch(
         self,
