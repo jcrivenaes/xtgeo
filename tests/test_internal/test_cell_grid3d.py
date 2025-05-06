@@ -300,9 +300,10 @@ def test_extract_onelayer_grid(get_drogondata):
         zcornsv=new_grid_cpp.zcornsv,
         actnumsv=new_grid_cpp.actnumsv,
     )
-    print(grd.dimensions)
-
-    grd.to_file("onelayer.grdecl", fformat="grdecl")
+    assert isinstance(grd, xtgeo.Grid)
+    assert grd.nlay == 1
+    assert grd.ncol == 92
+    assert grd.nrow == 146
 
 
 def test_get_grid_boundingbox(get_drogondata):
