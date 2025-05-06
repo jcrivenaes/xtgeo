@@ -10,7 +10,6 @@ import pytest
 
 import xtgeo
 import xtgeo._internal as _internal  # type: ignore
-from xtgeo._internal.xyz import Point  # type: ignore
 from xtgeo.common.log import functimer
 
 
@@ -27,7 +26,7 @@ def small_grid():
         origin=(xori, yori, zori),
         rotation=rotation,
     )
-    return _internal.grid3d.Grid(grid)
+    return grid, _internal.grid3d.Grid(grid)
 
 
 @pytest.fixture(scope="module", name="drogon_grid")
@@ -45,20 +44,26 @@ def test_points_inside_small_grid(small_grid):
         (2, 2, 1010.0),  # inside the grid in first cell (0, 0, 0)
         (102, 105, 1010.0),  # inside the grid in second cell in IJ (1, 1, 0)
         (299, 299, 1149.0),  # inside the grid in last cell (2, 2, 2)
-        (2, 2, 1200.0),  # outside the grid in Z (0, 0, 2)
+        (2, 2, 1200.0),  # outside the grid in Z
     ]
     points = xtgeo.Points(points_input)
 
-    x_arr = points.get_dataframe(copy=False)["X_UTME"].to_numpy()
-    y_arr = points.get_dataframe(copy=False)["Y_UTMN"].to_numpy()
-    z_arr = points.get_dataframe(copy=False)["Z_TVDSS"].to_numpy()
+    arr = points.get_xyz_arrays()
 
-    arr = np.array([x_arr, y_arr, z_arr]).T
-    print(arr)
+    grid, grid_cpp = small_grid
+    cache = grid._get_cache()
 
     points_cpp = _internal.xyz.PointSet(arr)
 
-    iarr, jarr, karr = small_grid.get_indices_from_pointset(points_cpp)
+    iarr, jarr, karr = grid_cpp.get_indices_from_pointset(
+        points_cpp,
+        cache.onegrid_cpp,
+        cache.top_i_index_cpp,
+        cache.top_j_index_cpp,
+        cache.base_i_index_cpp,
+        cache.base_j_index_cpp,
+        False,  # all cells
+    )
 
     res = np.array([iarr, jarr, karr]).T
     print(res)
@@ -79,28 +84,41 @@ def test_points_inside_drogon(drogon_grid):
     y_arr = y_from_grid.values[30, 50, 0:40]
     z_arr = z_from_grid.values[30, 50, 0:40]
 
+    grid._actnumsv[30, 50, 2] = 0  # set an inactive cell
+
     arr = np.array([x_arr, y_arr, z_arr]).T
 
     points_cpp = _internal.xyz.PointSet(arr)
 
-    grid_one_cpp = grid_cpp.extract_onelayer_grid()  # same grid IJ but with one layer
+    @functimer(output="print")
+    def preprocess():
+        return grid._get_cache()
+
+    cache = preprocess()
 
     @functimer(output="print")
     def calc():  # inner function to compute effective time on this function
-        return grid_cpp.get_indices_from_pointset(points_cpp, grid_one_cpp)
+        return grid_cpp.get_indices_from_pointset(
+            points_cpp,
+            cache.onegrid_cpp,
+            cache.top_i_index_cpp,
+            cache.top_j_index_cpp,
+            cache.base_i_index_cpp,
+            cache.base_j_index_cpp,
+            True,  # active cells only
+        )
 
+    # Call the function to get the result and measure the time taken
     iarr, jarr, karr = calc()
 
     res = np.array([iarr, jarr, karr]).T
-    print(res)
 
     exp_i = np.ones_like(iarr) * 30
     exp_j = np.ones_like(jarr) * 50
     exp_k = np.arange(0, 40)
     expected = np.array([exp_i, exp_j, exp_k]).T
+    expected[2, :] = -1  # inactive cell
+    print(res)
+    print(expected)
 
     np.testing.assert_array_equal(res, expected)
-
-
-# assert result is not None
-# assert len(result) == len(points)

@@ -45,6 +45,7 @@ def test_make_ijk_grid(loadwell1, loadgrid1):
     mywell.make_ijk_from_grid(mygrid)
 
     df = mywell.get_dataframe(copy=False)
+    print(df.to_string())
 
     assert int(df.iloc[4850]["ICELL"]) == 29
     assert int(df.iloc[4850]["JCELL"]) == 28

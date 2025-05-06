@@ -53,6 +53,9 @@ get_depth_in_cell(const double x,
 bool
 is_cell_non_convex(const CellCorners &corners);
 
+bool
+is_cell_distorted(const CellCorners &corners);
+
 // =====================================================================================
 // OPERATIONS ON MULTIPLE CELLS/GRID
 // =====================================================================================
@@ -103,7 +106,12 @@ get_bounding_box(const Grid &grid);
 std::tuple<py::array_t<int>, py::array_t<int>, py::array_t<int>>
 get_indices_from_pointset(const Grid &grid,
                           const xyz::PointSet &points,
-                          const Grid &one_grid);
+                          const Grid &one_grid,
+                          const regsurf::RegularSurface &top_i,
+                          const regsurf::RegularSurface &top_j,
+                          const regsurf::RegularSurface &base_i,
+                          const regsurf::RegularSurface &base_j,
+                          const bool active_only);
 
 // =====================================================================================
 // PYTHON BINDINGS, IF NEEDED
@@ -173,6 +181,8 @@ init(py::module &m)
                  "Get the bounding box for a cell");
     m_grid3d.def("is_cell_non_convex", &is_cell_non_convex,
                  "Check if a cell is non-convex");
+    m_grid3d.def("is_cell_distorted", &is_cell_distorted,
+                 "Check if a cell is (highly) distorted");
     m_grid3d.def("is_xy_point_in_cell", &is_xy_point_in_cell,
                  "Determine if a XY point is inside a cell, top or base.");
     m_grid3d.def("is_point_in_cell", &is_point_in_cell,

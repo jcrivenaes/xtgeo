@@ -85,7 +85,15 @@ is_point_in_cell(const xyz::Point &point,
                  const CellCorners &corners,
                  const std::string &method)
 {
-    auto &logger = xtgeo::logging::LoggerManager::get("grid3d::is_point_in_cell");
+    // Define the allowed methods
+    static const std::unordered_set<std::string> allowed_methods = {
+        "tetrahedrons", "non_convex", "ray_casting", "score_based", "using_planes"
+    };
+
+    // Check if the method is not in the allowed set
+    if (allowed_methods.find(method) == allowed_methods.end() && method != "auto") {
+        throw std::invalid_argument("Invalid method: " + method);
+    }
 
     // convert to right handed system
     auto hexahedron_corners = corners.to_hexahedron_corners();
@@ -96,17 +104,15 @@ is_point_in_cell(const xyz::Point &point,
     }
 
     // when auto, check if the cell is distorted
-    if (geometry::is_hexahedron_non_convex(hexahedron_corners)) {
+    if (geometry::is_hexahedron_concave_projected(hexahedron_corners)) {
         // Check if the cell is non-convex, using special method
-        logger.debug(
-          "Cell is considered non-convex, using centroid tetrahedron method.");
         return geometry::is_point_in_hexahedron(rh_point, hexahedron_corners,
-                                                "centroid_tetrahedrons");
+                                                "non_convex");
     }
 
     // For "normal" cells...
     return geometry::is_point_in_hexahedron(rh_point, hexahedron_corners,
-                                            "tetrahedrons");
+                                            "score_based");
 }
 
 }  // namespace xtgeo::grid3d

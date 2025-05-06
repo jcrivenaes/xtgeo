@@ -137,7 +137,8 @@ is_point_in_tetrahedron(const xyz::Point &point,
                         const xyz::Point &v0,
                         const xyz::Point &v1,
                         const xyz::Point &v2,
-                        const xyz::Point &v3);
+                        const xyz::Point &v3,
+                        const std::string &method = "barycentric");
 
 // =====================================================================================
 // POLYGONS (TRIANGLES, QUADRILATERALS, ...)
@@ -224,6 +225,15 @@ is_point_in_hexahedron(const xyz::Point &point,
 bool
 is_hexahedron_non_convex(const HexahedronCorners &corners);
 
+bool
+is_hexahedron_severely_distorted(const xtgeo::geometry::HexahedronCorners &corners);
+
+bool
+is_hexahedron_thin(const HexahedronCorners &corners, const double threshold = 0.05);
+
+bool
+is_hexahedron_concave_projected(const HexahedronCorners &corners);
+
 std::vector<double>
 get_hexahedron_minmax(const HexahedronCorners &corners);
 
@@ -237,9 +247,30 @@ inline void
 init(py::module &m)
 {
     auto m_geometry = m.def_submodule("geometry", "Internal geometric functions");
+
+    py::class_<HexahedronCorners>(m_geometry, "HexahedronCorners")
+      // a constructor that takes 8 xyz::Point objects
+      .def(py::init<xyz::Point, xyz::Point, xyz::Point, xyz::Point, xyz::Point,
+                    xyz::Point, xyz::Point, xyz::Point>())
+      // a constructor that takes a one-dimensional array of 24 elements
+      // Note that HexahedronCorners differs from CellCorners (slightly)
+      .def(py::init<const py::array_t<double> &>())
+
+      .def_readonly("upper_sw", &HexahedronCorners::upper_sw)
+      .def_readonly("upper_se", &HexahedronCorners::upper_se)
+      .def_readonly("upper_ne", &HexahedronCorners::upper_ne)
+      .def_readonly("upper_nw", &HexahedronCorners::upper_nw)
+      .def_readonly("lower_sw", &HexahedronCorners::lower_sw)
+      .def_readonly("lower_se", &HexahedronCorners::lower_se)
+      .def_readonly("lower_ne", &HexahedronCorners::lower_ne)
+      .def_readonly("lower_nw", &HexahedronCorners::lower_nw)
+
+      ;
+
     m_geometry.def(
       "hexahedron_volume",
-      [](const grid3d::CellCorners &corners, int precision) {
+      [](const grid3d::CellCorners &corners,
+         int precision) {  // overload for CellCorners
           return hexahedron_volume(corners, precision);
       },
       "Estimate the volume of a hexahedron i.e. a cornerpoint cell using "
@@ -269,6 +300,14 @@ init(py::module &m)
                    "Determine if a point XYZ is inside a hexahedron, with method");
     m_geometry.def("is_hexahedron_non_convex", &is_hexahedron_non_convex,
                    "Determine if a hexahedron is non-convex");
+    m_geometry.def("is_hexahedron_severely_distorted",
+                   &is_hexahedron_severely_distorted,
+                   "Determine if a hexahedron is severely distorted");
+    m_geometry.def("is_hexahedron_thin", &is_hexahedron_thin,
+                   "Determine if a hexahedron is thin", py::arg("corners"),
+                   py::arg("threshold") = 0.05);
+    m_geometry.def("is_hexahedron_concave_projected", &is_hexahedron_concave_projected,
+                   "Determine if a hexahedron is concave projected");
 }
 }  // namespace xtgeo::geometry
 

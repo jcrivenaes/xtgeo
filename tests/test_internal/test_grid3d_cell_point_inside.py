@@ -46,63 +46,30 @@ def complex_grid():
 
 
 @pytest.mark.parametrize(
-    "method, point, expected",
+    "method",
+    ["ray_casting", "tetrahedrons", "non_convex", "using_planes", "score_based"],
+)
+@pytest.mark.parametrize(
+    "point, expected",
     [
         # Test center point with different methods
-        ("ray_casting", Point(50.0, 50.0, 1005.0), True),
+        (Point(50.0, 50.0, 1005.0), True),
         # Test points near boundaries
-        ("ray_casting", Point(1.0, 50.0, 1005.0), True),
-        ("ray_casting", Point(99.0, 50.0, 1005.0), True),
-        ("ray_casting", Point(50.0, 1.0, 1005.0), True),
-        ("ray_casting", Point(50.0, 99.0, 1005.0), True),
-        ("ray_casting", Point(50.0, 50.0, 1001.0), True),
-        ("ray_casting", Point(50.0, 50.0, 1009.0), True),
+        (Point(1.0, 50.0, 1005.0), True),
+        (Point(99.0, 50.0, 1005.0), True),
+        (Point(50.0, 1.0, 1005.0), True),
+        (Point(50.0, 99.0, 1005.0), True),
+        (Point(50.0, 50.0, 1001.0), True),
+        (Point(50.0, 50.0, 1009.0), True),
+        (Point(0.0001, 0.0001, 1009.999), True),  # Point very close to the edge
         # Test points outside
-        ("ray_casting", Point(-10.0, 50.0, 1005.0), False),
-        ("ray_casting", Point(110.0, 50.0, 1005.0), False),
-        ("ray_casting", Point(50.0, -10.0, 1005.0), False),
-        ("ray_casting", Point(50.0, 110.0, 1005.0), False),
-        ("ray_casting", Point(50.0, 50.0, 990.0), False),
-        ("ray_casting", Point(50.0, 50.0, 1020.0), False),
-        ("tetrahedrons", Point(50.0, 50.0, 1005.0), True),
-        ("tetrahedrons", Point(1.0, 50.0, 1005.0), True),
-        ("tetrahedrons", Point(99.0, 50.0, 1005.0), True),
-        ("tetrahedrons", Point(50.0, 1.0, 1005.0), True),
-        ("tetrahedrons", Point(50.0, 99.0, 1005.0), True),
-        ("tetrahedrons", Point(50.0, 50.0, 1001.0), True),
-        ("tetrahedrons", Point(50.0, 50.0, 1009.0), True),
-        ("tetrahedrons", Point(-10.0, 50.0, 1005.0), False),
-        ("tetrahedrons", Point(110.0, 50.0, 1005.0), False),
-        ("tetrahedrons", Point(50.0, -10.0, 1005.0), False),
-        ("tetrahedrons", Point(50.0, 110.0, 1005.0), False),
-        ("tetrahedrons", Point(50.0, 50.0, 990.0), False),
-        ("tetrahedrons", Point(50.0, 50.0, 1020.0), False),
-        ("centroid_tetrahedrons", Point(50.0, 50.0, 1005.0), True),
-        ("centroid_tetrahedrons", Point(1.0, 50.0, 1005.0), False),  # expected True
-        ("centroid_tetrahedrons", Point(99.0, 50.0, 1005.0), True),
-        ("centroid_tetrahedrons", Point(50.0, 1.0, 1005.0), True),
-        ("centroid_tetrahedrons", Point(50.0, 99.0, 1005.0), True),
-        ("centroid_tetrahedrons", Point(50.0, 50.0, 1001.0), True),
-        ("centroid_tetrahedrons", Point(50.0, 50.0, 1009.0), True),
-        ("centroid_tetrahedrons", Point(-10.0, 50.0, 1005.0), False),
-        ("centroid_tetrahedrons", Point(110.0, 50.0, 1005.0), False),
-        ("centroid_tetrahedrons", Point(50.0, -10.0, 1005.0), False),
-        ("centroid_tetrahedrons", Point(50.0, 110.0, 1005.0), False),
-        ("centroid_tetrahedrons", Point(50.0, 50.0, 990.0), False),
-        ("centroid_tetrahedrons", Point(50.0, 50.0, 1020.0), False),
-        ("non_convex", Point(50.0, 50.0, 1005.0), True),
-        ("non_convex", Point(1.0, 50.0, 1005.0), True),
-        ("non_convex", Point(99.0, 50.0, 1005.0), True),
-        ("non_convex", Point(50.0, 1.0, 1005.0), True),
-        ("non_convex", Point(50.0, 99.0, 1005.0), True),
-        ("non_convex", Point(50.0, 50.0, 1001.0), True),
-        ("non_convex", Point(50.0, 50.0, 1009.0), True),
-        ("non_convex", Point(-10.0, 50.0, 1005.0), False),
-        ("non_convex", Point(110.0, 50.0, 1005.0), False),
-        ("non_convex", Point(50.0, -10.0, 1005.0), False),
-        ("non_convex", Point(50.0, 110.0, 1005.0), False),
-        ("non_convex", Point(50.0, 50.0, 990.0), False),
-        ("non_convex", Point(50.0, 50.0, 1020.0), False),
+        (Point(-0.0001, -0.0001, 1010.001), False),  # Point slightly outside
+        (Point(-10.0, 50.0, 1005.0), False),
+        (Point(110.0, 50.0, 1005.0), False),
+        (Point(50.0, -10.0, 1005.0), False),
+        (Point(50.0, 110.0, 1005.0), False),
+        (Point(50.0, 50.0, 990.0), False),
+        (Point(50.0, 50.0, 1020.0), False),
     ],
 )
 def test_point_inside_cell_methods(simple_grid, method, point, expected):
@@ -141,11 +108,39 @@ def test_point_inside_hexahedroncell_etc_speed(simple_grid):
         for i in range(iterations):
             _internal.grid3d.is_cell_non_convex(cell_corners)
 
+    @functimer(output="print")
+    def distorted_test():
+        for i in range(iterations):
+            _internal.grid3d.is_cell_distorted(cell_corners)
+
     ray_casting_method()
     tetrahedrons_method()
     convexity_test()
+    distorted_test()
 
 
+@pytest.mark.parametrize(
+    "method",
+    ["ray_casting", "tetrahedrons", "non_convex", "using_planes", "score_based"],
+)
+def test_point_inside_hexahedron_speed(simple_grid, method):
+    """Benchmark the speed of different methods for point-in-hexahedron."""
+    cell_corners = simple_grid.get_cell_corners_from_ijk(0, 0, 0)
+    center = Point(50.0, 50.0, 1005.0)
+    iterations = 10000
+
+    @functimer(output="print")
+    def benchmark_method():
+        for _ in range(iterations):
+            _internal.grid3d.is_point_in_cell(center, cell_corners, method)
+
+    benchmark_method()
+
+
+@pytest.mark.parametrize(
+    "method",
+    ["ray_casting", "tetrahedrons", "non_convex", "using_planes", "score_based"],
+)
 @pytest.mark.parametrize(
     "point, expected_result, description",
     [
@@ -160,19 +155,23 @@ def test_point_inside_hexahedroncell_etc_speed(simple_grid):
     ],
 )
 def test_point_inside_simple_grid_cell(
-    simple_grid, point, expected_result, description
+    method, simple_grid, point, expected_result, description
 ):
     """Test if points are correctly identified as inside/outside a simple grid cell."""
     # Get the first cell of the grid
     cell_corners = simple_grid.get_cell_corners_from_ijk(0, 0, 0)
 
-    result = _internal.grid3d.is_point_in_cell(point, cell_corners)
+    result = _internal.grid3d.is_point_in_cell(point, cell_corners, method)
     assert result == expected_result, (
         f"Failed for {description}: {point}, got {result}, expected {expected_result}"
     )
 
 
-def test_point_inside_complex_grid(complex_grid):
+@pytest.mark.parametrize(
+    "method",
+    ["ray_casting", "tetrahedrons", "non_convex", "using_planes", "score_based"],
+)
+def test_point_inside_complex_grid(complex_grid, method):
     """Test points inside/outside cells of a more complex grid."""
     # Test points in various cells of the grid
     for i in range(3):
@@ -188,31 +187,46 @@ def test_point_inside_complex_grid(complex_grid):
 
                 # Point at center should be inside
                 center_point = Point(center_x, center_y, center_z)
-                assert _internal.grid3d.is_point_in_cell(center_point, cell_corners)
+                assert _internal.grid3d.is_point_in_cell(
+                    center_point, cell_corners, method
+                )
 
                 # Point far outside should be outside
                 far_point = Point(center_x + 1000, center_y + 1000, center_z + 1000)
-                assert not _internal.grid3d.is_point_in_cell(far_point, cell_corners)
+                assert not _internal.grid3d.is_point_in_cell(
+                    far_point, cell_corners, method
+                )
 
 
-def test_ray_edge_cases(simple_grid):
-    """Test edge cases for ray casting algorithm."""
+@pytest.mark.parametrize(
+    "method",
+    ["ray_casting", "tetrahedrons", "non_convex", "using_planes", "score_based"],
+)
+def test_edge_cases_for_methods(simple_grid, method):
+    """Test edge cases for all methods."""
     cell_corners = simple_grid.get_cell_corners_from_ijk(0, 0, 0)
 
-    # Test with point exactly on a face
+    # Points exactly on the boundary
     on_top_face = Point(50.0, 50.0, 1000.0)
-    assert _internal.grid3d.is_point_in_cell(on_top_face, cell_corners, "ray_casting")
-
-    # Test with point exactly on a vertex
     on_vertex = Point(0.0, 0.0, 1000.0)
-    assert _internal.grid3d.is_point_in_cell(on_vertex, cell_corners, "ray_casting")
-
-    # Test with point exactly on an edge
     on_edge = Point(50.0, 0.0, 1000.0)
-    assert _internal.grid3d.is_point_in_cell(on_edge, cell_corners, "ray_casting")
+
+    assert _internal.grid3d.is_point_in_cell(on_top_face, cell_corners, method)
+    assert _internal.grid3d.is_point_in_cell(on_vertex, cell_corners, method)
+    assert _internal.grid3d.is_point_in_cell(on_edge, cell_corners, method)
 
 
-def test_point_inside_thin_cell():
+@pytest.mark.parametrize(
+    "method, expected_result, _",
+    [
+        ("ray_casting", (False, False), "Ray casting known struggle with thin cells"),
+        ("tetrahedrons", (True, False), "Known to be true/false for tetrahedrons"),
+        ("non_convex", (True, False), "Known to be true/false for non_convex"),
+        ("using_planes", (True, False), "Known to be true/false for using_planes"),
+        ("score_based", (True, False), "Known to be true/false for score_based"),
+    ],
+)
+def test_point_inside_thin_cell(method, expected_result, _):
     """Test with a degenerate cell (nearly flat in one direction)."""
     # Create a custom cell that's very thin in z-direction
     p1 = Point(0.0, 0.0, 1000.0)
@@ -220,25 +234,41 @@ def test_point_inside_thin_cell():
     p3 = Point(0.0, 100.0, 1000.0)
     p4 = Point(100.0, 100.0, 1000.0)
 
-    p5 = Point(0.0, 0.0, 1001.0)
-    p6 = Point(100.0, 0.0, 1001.0)
-    p7 = Point(0.0, 100.0, 1001.0)
-    p8 = Point(100.0, 100.0, 1001.0)
+    p5 = Point(0.0, 0.0, 1000.1)
+    p6 = Point(100.0, 0.0, 1000.1)
+    p7 = Point(0.0, 100.0, 1000.1)
+    p8 = Point(100.0, 100.0, 1000.1)
 
     cell_corners = _internal.grid3d.CellCorners(p1, p2, p4, p3, p5, p6, p8, p7)
 
+    expected1, expected2 = expected_result
+
     # Test with point inside the thin cell
-    inside_point = Point(50.0, 50.0, 1000.5)
-    assert _internal.grid3d.is_point_in_cell(inside_point, cell_corners, "tetrahedrons")
+    inside_point = Point(50.0, 50.0, 1000.05)
+    assert (
+        _internal.grid3d.is_point_in_cell(inside_point, cell_corners, method)
+        is expected1
+    )
 
     # Test with point just outside the z bounds
     outside_point = Point(50.0, 50.0, 1001.1)
-    assert not _internal.grid3d.is_point_in_cell(
-        outside_point, cell_corners, "tetrahedrons"
+    assert (
+        _internal.grid3d.is_point_in_cell(outside_point, cell_corners, method)
+        is expected2
     )
 
 
-def test_point_inside_deformed_case1_cell():
+@pytest.mark.parametrize(
+    "method, expected_result, _",
+    [
+        ("ray_casting", (False, False), "Ray casting struggle with deformed cells"),
+        ("tetrahedrons", (True, False), "Known to be true/false for tetrahedrons"),
+        ("non_convex", (True, False), "Known to be true/false for non_convex"),
+        ("using_planes", (True, False), "Known to be true/false for using_planes"),
+        ("score_based", (True, False), "Known to be true/false for score_based"),
+    ],
+)
+def test_point_inside_deformed_case1_cell(method, expected_result, _):
     """Test with a degenerate cell (deformed, case 1)."""
     # Create a custom cell that's very thin in z-direction
     p1 = Point(0.0, 0.0, 1000.0)
@@ -246,21 +276,27 @@ def test_point_inside_deformed_case1_cell():
     p3 = Point(0.0, 200.0, 1000.0)
     p4 = Point(100.0, 100.0, 1000.0)
 
-    p5 = Point(0.0, 0.0, 1001.0)
-    p6 = Point(10.0, 0.0, 1001.0)
-    p7 = Point(0.0, 200.0, 1001.0)
-    p8 = Point(100.0, 100.0, 1001.0)
+    p5 = Point(0.0, 0.0, 1010.0)
+    p6 = Point(10.0, 0.0, 1010.0)
+    p7 = Point(0.0, 200.0, 1010.0)
+    p8 = Point(100.0, 100.0, 1010.0)
 
     cell_corners = _internal.grid3d.CellCorners(p1, p2, p4, p3, p5, p6, p8, p7)
 
+    expected1, expected2 = expected_result
+
     # Test with point inside deformed cell
-    inside_point = Point(50.0, 50.0, 1000.5)
-    assert _internal.grid3d.is_point_in_cell(inside_point, cell_corners, "non_convex")
+    inside_point = Point(50.0, 50.0, 1005.0)
+    assert (
+        _internal.grid3d.is_point_in_cell(inside_point, cell_corners, method)
+        is expected1
+    )
 
     # Test with point just outside the bounds
-    outside_point = Point(60.0, 50.0, 1000.5)
-    assert not _internal.grid3d.is_point_in_cell(
-        outside_point, cell_corners, "non_convex"
+    outside_point = Point(60.0, 50.0, 1005.0)
+    assert (
+        _internal.grid3d.is_point_in_cell(outside_point, cell_corners, method)
+        is expected2
     )
 
 
@@ -275,7 +311,7 @@ def test_point_inside_deformed_case1_cell():
             False,
         ),
         (
-            "centroid_tetrahedrons",
+            "using_planes",
             Point(50.0, 50.0, 1000.5),
             Point(60.0, 50.0, 1000.5),
             True,
@@ -330,7 +366,7 @@ def test_point_inside_deformed_case2_cell_with_parametrize(
     )
 
 
-def test_more_vertices_1():
+def test_more_vertices():
     vrt = [0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 1, 0, 0, 0, 1, 1, 0, 1, 0, 1, 1, 1, 1, 1]
     cell_corners = _internal.grid3d.CellCorners(vrt)
     assert _internal.grid3d.is_cell_non_convex(cell_corners) is False
@@ -341,8 +377,9 @@ def test_more_vertices_1():
     )
 
 
-def test_more_vertices_2():
-    """Testing a non-convex cell, test is based on a real case, from former SWIG/C."""
+@pytest.fixture
+def non_convex_cell():
+    """Fixture for a non-convex cell based on a real case."""
     vrt = [
         461351.493253,
         5938298.477428,
@@ -369,18 +406,38 @@ def test_more_vertices_2():
         5938250.905010,
         1921.021973,
     ]
+    return _internal.grid3d.CellCorners(vrt)
 
-    p1 = Point(461467.513586, 5938273.910537, 1850)
-    p2 = Point(461467.513586, 5938273.910537, 1849.95)
 
-    cell_corners = _internal.grid3d.CellCorners(vrt)
-    assert _internal.grid3d.is_cell_non_convex(cell_corners) is True
+@pytest.mark.parametrize(
+    "method",
+    ["ray_casting", "tetrahedrons", "non_convex", "using_planes", "score_based"],
+)
+def test_non_convex_cell_methods(non_convex_cell, method):
+    """Test a non-convex cell with various methods."""
+    # Points to test
+    inside_point = Point(461467.513586, 5938273.910537, 1850)
+    outside_point = Point(461467.513586, 5938273.910537, 1849.95)
 
-    for method in (
-        "ray_casting",
-        "tetrahedrons",
-        "centroid_tetrahedrons",
-        "non_convex",
-    ):
-        assert _internal.grid3d.is_point_in_cell(p1, cell_corners, method) is True
-        assert _internal.grid3d.is_point_in_cell(p2, cell_corners, method) is False
+    # Check if the cell is non-convex
+    assert _internal.grid3d.is_cell_non_convex(non_convex_cell) is True, (
+        "Expected the cell to be non-convex, but it was not detected as such."
+    )
+
+    # Test the inside point
+    result_inside = _internal.grid3d.is_point_in_cell(
+        inside_point, non_convex_cell, method
+    )
+    assert result_inside is True, (
+        f"Method {method} failed for inside point {inside_point}. "
+        f"Expected True, got {result_inside}."
+    )
+
+    # Test the outside point
+    result_outside = _internal.grid3d.is_point_in_cell(
+        outside_point, non_convex_cell, method
+    )
+    assert result_outside is False, (
+        f"Method {method} failed for outside point {outside_point}. "
+        f"Expected False, got {result_outside}."
+    )

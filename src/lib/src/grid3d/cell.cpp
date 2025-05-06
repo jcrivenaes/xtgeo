@@ -188,5 +188,12 @@ is_cell_non_convex(const CellCorners &corners)
     // Check if the cell is non-convex
     return geometry::is_hexahedron_non_convex(corners.to_hexahedron_corners());
 }  // is_cell_non_convex
+bool
+
+is_cell_distorted(const CellCorners &corners)
+{
+    // Check if the cell is distorted heavily
+    return geometry::is_hexahedron_severely_distorted(corners.to_hexahedron_corners());
+}  // is_cell_distorted
 
 }  // namespace xtgeo::grid3d

@@ -148,9 +148,8 @@ struct HexahedronCorners
                       xyz::Point lse,
                       xyz::Point lne,
                       xyz::Point lnw) :
-      upper_sw(usw),
-      upper_se(use), upper_ne(une), upper_nw(unw), lower_sw(lsw), lower_se(lse),
-      lower_ne(lne), lower_nw(lnw)
+      upper_sw(usw), upper_se(use), upper_ne(une), upper_nw(unw), lower_sw(lsw),
+      lower_se(lse), lower_ne(lne), lower_nw(lnw)
     {
         validate_z_coordinates();
     }
@@ -211,6 +210,31 @@ struct HexahedronCorners
         r(7, 2) = lower_nw.z;
 
         return arr;
+    }
+
+    std::string to_string() const
+    {
+        std::ostringstream oss;
+        oss << "HexahedronCorners:\n";
+        oss << "Upper corners:\n";
+        oss << "  SW: (" << upper_sw.x << ", " << upper_sw.y << ", " << upper_sw.z
+            << ")\n";
+        oss << "  SE: (" << upper_se.x << ", " << upper_se.y << ", " << upper_se.z
+            << ")\n";
+        oss << "  NE: (" << upper_ne.x << ", " << upper_ne.y << ", " << upper_ne.z
+            << ")\n";
+        oss << "  NW: (" << upper_nw.x << ", " << upper_nw.y << ", " << upper_nw.z
+            << ")\n";
+        oss << "Lower corners:\n";
+        oss << "  SW: (" << lower_sw.x << ", " << lower_sw.y << ", " << lower_sw.z
+            << ")\n";
+        oss << "  SE: (" << lower_se.x << ", " << lower_se.y << ", " << lower_se.z
+            << ")\n";
+        oss << "  NE: (" << lower_ne.x << ", " << lower_ne.y << ", " << lower_ne.z
+            << ")\n";
+        oss << "  NW: (" << lower_nw.x << ", " << lower_nw.y << ", " << lower_nw.z
+            << ")\n";
+        return oss.str();
     }
 
 private:
@@ -327,9 +351,8 @@ struct CellCorners
                 xyz::Point lse,
                 xyz::Point lnw,
                 xyz::Point lne) :
-      upper_sw(usw),
-      upper_se(use), upper_nw(unw), upper_ne(une), lower_sw(lsw), lower_se(lse),
-      lower_nw(lnw), lower_ne(lne)
+      upper_sw(usw), upper_se(use), upper_nw(unw), upper_ne(une), lower_sw(lsw),
+      lower_se(lse), lower_nw(lnw), lower_ne(lne)
     {
     }
 
@@ -424,8 +447,8 @@ struct RegularSurface
                    double xinc,
                    double yinc,
                    double rotation) :
-      ncol(ncol),
-      nrow(nrow), xori(xori), yori(yori), xinc(xinc), yinc(yinc), rotation(rotation)
+      ncol(ncol), nrow(nrow), xori(xori), yori(yori), xinc(xinc), yinc(yinc),
+      rotation(rotation)
     {
     }
 

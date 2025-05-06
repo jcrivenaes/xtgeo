@@ -1,3 +1,5 @@
+#include <cmath>   // Required for fabs
+#include <limits>  // Required for numeric_limits
 #include <xtgeo/geometry.hpp>
 #include <xtgeo/grid3d.hpp>
 #include <xtgeo/logging.hpp>
@@ -8,6 +10,150 @@ namespace xtgeo::geometry {
 
 using grid3d::CellCorners;
 using xyz::Point;
+
+// Helper function for vector subtraction
+static xyz::Point
+subtract(const xyz::Point &a, const xyz::Point &b)
+{
+    return { a.x - b.x, a.y - b.y, a.z - b.z };
+}
+
+// Helper function for cross product
+static xyz::Point
+cross_product(const xyz::Point &a, const xyz::Point &b)
+{
+    return { a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x };
+}
+
+// Helper function for dot product
+static double
+dot_product(const xyz::Point &a, const xyz::Point &b)
+{
+    return a.x * b.x + a.y * b.y + a.z * b.z;
+}
+
+// Helper function to calculate magnitude squared (avoid sqrt)
+static double
+magnitude_squared(const xyz::Point &v)
+{
+    return v.x * v.x + v.y * v.y + v.z * v.z;
+}
+
+/**
+ * @brief Determines if a point is inside or on the boundary of a hexahedron using plane
+ * side tests. This method triangulates each face and checks if the point lies on the
+ * inner side of all 12 resulting triangles. It uses the centroid to consistently orient
+ * face normals outwards. Handles potential numerical precision issues and degenerate
+ * triangles.
+ *
+ * @param point The point to test.
+ * @param vertices The 8 vertices of the hexahedron in standard order:
+ *        0-3: upper face (sw, se, ne, nw)
+ *        4-7: lower face (sw, se, ne, nw)
+ * @return true if the point is inside or on the boundary, false otherwise.
+ */
+static bool
+is_point_in_hexahedron_using_planes(const xyz::Point &point,
+                                    const std::array<xyz::Point, 8> &vertices,
+                                    const Point &min_pt,
+                                    const Point &max_pt)
+{
+    double diagonal =
+      std::sqrt(std::pow(max_pt.x - min_pt.x, 2) + std::pow(max_pt.y - min_pt.y, 2) +
+                std::pow(max_pt.z - min_pt.z, 2));
+    // If diagonal is zero (degenerate hexahedron), handle appropriately
+    if (diagonal < std::numeric_limits<double>::epsilon()) {
+        // All vertices are coincident. Point is inside only if it matches the vertex.
+        return magnitude_squared(subtract(point, vertices[0])) <
+               std::numeric_limits<double>::epsilon();
+    }
+    const double EPSILON = 1e-9 * diagonal;  // Relative tolerance
+
+    // Define the 6 faces of the hexahedron by vertex indices
+    // Ensure consistent winding order for outward normals (e.g., counter-clockwise when
+    // viewed from outside)
+    //      3----2
+    //     /|   /|
+    //    0----1 |   Upper face (z+)
+    //    | 7--|-6
+    //    |/   |/
+    //    4----5     Lower face (z-)
+    //
+    const std::array<std::array<int, 4>, 6> faces = { {
+      { 0, 1, 2, 3 },  // Top (viewed from +Z)
+      { 4, 7, 6, 5 },  // Bottom (viewed from -Z) - Corrected
+      { 0, 4, 5, 1 },  // Front (viewed from +Y) - Corrected
+      { 1, 5, 6, 2 },  // Right (viewed from +X) - Corrected
+      { 2, 6, 7, 3 },  // Back (viewed from -Y) - Corrected
+      { 3, 7, 4, 0 }   // Left (viewed from -X) - Corrected
+    } };
+
+    // Calculate the centroid of the hexahedron
+    xyz::Point centroid = { 0.0, 0.0, 0.0 };
+    for (const auto &v : vertices) {
+        centroid.x += v.x;
+        centroid.y += v.y;
+        centroid.z += v.z;
+    }
+    centroid.x /= 8.0;
+    centroid.y /= 8.0;
+    centroid.z /= 8.0;
+
+    // Check the point against the planes defined by the triangles of each face
+    for (const auto &face_indices : faces) {
+        // Split the quadrilateral face into two triangles (using the first vertex)
+        const std::array<std::array<int, 3>, 2> triangles = {
+            { { face_indices[0], face_indices[1], face_indices[2] },
+              { face_indices[0], face_indices[2], face_indices[3] } }
+        };
+
+        for (const auto &triangle_indices : triangles) {
+            const xyz::Point &p0 = vertices[triangle_indices[0]];
+            const xyz::Point &p1 = vertices[triangle_indices[1]];
+            const xyz::Point &p2 = vertices[triangle_indices[2]];
+
+            // Calculate the triangle normal
+            xyz::Point edge1 = subtract(p1, p0);
+            xyz::Point edge2 = subtract(p2, p0);
+            xyz::Point normal = cross_product(edge1, edge2);
+
+            // Check for degenerate triangles (zero area). Normal magnitude squared is
+            // proportional to area squared. Use a tolerance slightly larger than
+            // machine epsilon for squared values.
+            if (magnitude_squared(normal) < EPSILON * EPSILON * 1e-6) {
+                // Skip degenerate triangles. If a point lies exactly on a degenerate
+                // face, other non-degenerate faces should still correctly classify it.
+                continue;
+            }
+
+            // Orient the normal outwards using the centroid.
+            // Check if the centroid is on the same side as the normal direction
+            // relative to the plane origin p0.
+            xyz::Point p0_to_centroid = subtract(centroid, p0);
+            if (dot_product(normal, p0_to_centroid) > 0) {
+                // Normal is pointing inwards relative to the centroid, flip it
+                normal.x = -normal.x;
+                normal.y = -normal.y;
+                normal.z = -normal.z;
+            }
+
+            // Check if the test point is on the outer side of the plane defined by the
+            // triangle. Calculate signed distance: dot(normal, point - p0)
+            xyz::Point p0_to_point = subtract(point, p0);
+            double dist = dot_product(normal, p0_to_point);
+
+            // If point is clearly outside (positive distance beyond tolerance, given
+            // outward normal)
+            if (dist > EPSILON) {
+                return false;  // Point is outside this face plane
+            }
+        }
+    }
+
+    // If the point was not outside any face plane (i.e., dist <= EPSILON for all), it's
+    // inside or on the boundary.
+    return true;
+}
 
 /*
  * Function to determine if a ray intersects a triangle in 3D space.
@@ -75,7 +221,12 @@ ray_intersects_triangle(const xyz::Point &origin,
     return (t > EPSILON);
 }  // ray_intersects_triangle
 
-// helper function to use ray casting to check if a point is inside a "normal" cell
+// =====================================================================================
+// Ray casting calculations for a point inside a hexahedron
+// =====================================================================================
+/**
+ * @brief Using ray casting method to determine if a point is inside a hexahedron.
+ */
 static bool
 is_point_in_hexahedron_using_raycasting(const xyz::Point &point_rh,
                                         const std::array<xyz::Point, 8> &vertices)
@@ -151,74 +302,12 @@ is_point_in_hexahedron_using_raycasting(const xyz::Point &point_rh,
 // =====================================================================================
 /**
  * @brief Special method for difficult cases
-
  */
-
-static bool
-is_point_in_hexahedron_using_centroid_tetrahedrons(
-  const xyz::Point &point_rh,
-  const std::array<xyz::Point, 8> &vertices)
-{
-    auto &logger = xtgeo::logging::LoggerManager::get(
-      "geometry::is_point_in_hexahedron_using_centroid_tetrahedrons");
-
-    if (PYTHON_LOGGING_DEBUG()) {
-        logger.debug(
-          "Using centroid tetrahedrons method for point-in-hexahedron check.");
-    }
-
-    // Calculate the centroid of the hexahedron
-    xyz::Point centroid = { 0.0, 0.0, 0.0 };
-    for (const auto &v : vertices) {
-        centroid.x += v.x;
-        centroid.y += v.y;
-        centroid.z += v.z;
-    }
-    centroid.x /= 8.0;
-    centroid.y /= 8.0;
-    centroid.z /= 8.0;
-
-    if (PYTHON_LOGGING_DEBUG()) {
-        logger.debug("Centroid of hexahedron: ({}, {}, {})", centroid.x, centroid.y,
-                     centroid.z);
-        logger.debug("Point to check: ({}, {}, {})", point_rh.x, point_rh.y,
-                     point_rh.z);
-        logger.debug("Vertices of hexahedron:");
-        for (const auto &v : vertices) {
-            logger.debug("({:.2f}, {:.2f}, {:.2f})", v.x, v.y, v.z);
-        }
-    }
-
-    // Use the CENTROID_TETRAHEDRON_SCHEME defined in geometry.hpp
-    for (int scheme = 0; scheme < 2; ++scheme) {
-        for (size_t i = 0; i < 8; ++i) {
-            const auto &tetra = CENTROID_TETRAHEDRON_SCHEME[scheme][i];
-            // Note: We're explicitly handling the -1 case (which means use centroid)
-            const xyz::Point &v0 = vertices[tetra[0]];
-            const xyz::Point &v1 = vertices[tetra[1]];
-            const xyz::Point &v2 = vertices[tetra[2]];
-
-            // The fourth vertex is always the centroid, as specified by -1
-            if (is_point_in_tetrahedron(point_rh, v0, v1, v2, centroid)) {
-                return true;
-            }
-        }
-    }
-
-    return false;
-}
-
 static bool
 is_point_in_non_convex_hexahedron(const xyz::Point &point,
                                   const std::array<xyz::Point, 8> &vertices)
 {
 
-    auto &logger =
-      xtgeo::logging::LoggerManager::get("geometry::is_point_in_non_convex_hexahedron");
-    if (PYTHON_LOGGING_DEBUG()) {
-        logger.debug(
-          "Using centroid tetrahedrons method for point-in-hexahedron check.");
-    }
     // Calculate the centroid of the hexahedron
     xyz::Point centroid = { 0.0, 0.0, 0.0 };
     for (const auto &v : vertices) {
@@ -252,6 +341,58 @@ is_point_in_non_convex_hexahedron(const xyz::Point &point,
     }
 
     return false;
+}
+/**
+ * @brief Determines if a point is inside a hexahedron using signed volume tests.
+ * @param point The point to test.
+ * @param vertices The 8 vertices of the hexahedron.
+ * @return true if the point is inside or on the boundary of the hexahedron, false
+ * otherwise.
+ */
+static bool
+is_point_in_hexahedron_using_signed_volume(const xyz::Point &point,
+                                           const std::array<xyz::Point, 8> &vertices)
+{
+    // Helper function to calculate the signed volume of a tetrahedron
+    auto signed_volume = [](const xyz::Point &p1, const xyz::Point &p2,
+                            const xyz::Point &p3, const xyz::Point &p4) -> double {
+        return (1.0 / 6.0) *
+               ((p2.x - p1.x) *
+                  ((p3.y - p1.y) * (p4.z - p1.z) - (p3.z - p1.z) * (p4.y - p1.y)) -
+                (p2.y - p1.y) *
+                  ((p3.x - p1.x) * (p4.z - p1.z) - (p3.z - p1.z) * (p4.x - p1.x)) +
+                (p2.z - p1.z) *
+                  ((p3.x - p1.x) * (p4.y - p1.y) - (p3.y - p1.y) * (p4.x - p1.x)));
+    };
+
+    // Decompose the hexahedron into 6 tetrahedrons
+    const std::array<std::array<int, 4>, 6> tetrahedrons = { {
+      { 0, 1, 2, 4 },  // Top face and lower_sw
+      { 1, 2, 3, 5 },  // Top face and lower_se
+      { 2, 3, 0, 6 },  // Top face and lower_ne
+      { 3, 0, 1, 7 },  // Top face and lower_nw
+      { 4, 5, 6, 7 },  // Bottom face
+      { 0, 1, 2, 3 }   // Top face
+    } };
+
+    // Calculate the signed volume of the hexahedron
+    double hexahedron_volume = 0.0;
+    for (const auto &tetra : tetrahedrons) {
+        hexahedron_volume +=
+          std::abs(signed_volume(vertices[tetra[0]], vertices[tetra[1]],
+                                 vertices[tetra[2]], vertices[tetra[3]]));
+    }
+
+    // Calculate the sum of signed volumes of tetrahedrons formed with the point
+    double point_volume_sum = 0.0;
+    for (const auto &tetra : tetrahedrons) {
+        point_volume_sum += std::abs(signed_volume(
+          point, vertices[tetra[1]], vertices[tetra[2]], vertices[tetra[3]]));
+    }
+
+    // If the sum of the point volumes equals the hexahedron volume, the point is inside
+    const double EPSILON = 1e-8;
+    return std::abs(point_volume_sum - hexahedron_volume) < EPSILON;
 }
 
 static xyz::Point
@@ -293,7 +434,6 @@ calculate_dip_direction(const xyz::Point &p1,
  * @brief Local function to select best scheme for tetrahedrons base on planarity
  * and elevation differences.
  */
-
 static int
 select_best_scheme(const std::array<xyz::Point, 8> &vertices)
 {
@@ -369,21 +509,18 @@ is_point_in_hexahedron_using_tetrahedrons(const xyz::Point &point_rh,
 }
 /**
  * @brief A central function where one can select appropriate method
-    * for point-in-cell test.
-    * @param point The point to test, negated Z compared to python
-    * @param corners The 8 corners of the hexahedron
-    * @param method The method to use for the test
-    * @return true if the point is inside the hexahedron, false otherwise
-    * @throws std::invalid_argument if the method is not recognized
-    * @throws std::runtime_error if the method is not implemented
-
+ * for point-in-cell test.
+ * @param point The point to test, negated Z compared to python
+ * @param corners The 8 corners of the hexahedron
+ * @param method The method to use for the test
+ * @return true if the point is inside the hexahedron, false otherwise
+ * @throws std::invalid_argument if the method is not recognized
  */
 bool
 is_point_in_hexahedron(const xyz::Point &point,
                        const HexahedronCorners &hexahedron_corners,
                        const std::string &method)
 {
-    auto &logger = xtgeo::logging::LoggerManager::get("is_point_in_hexahedron");
 
     // Quick rejection test using bounding box; this is independent of the method
     auto [min_point, max_point] = get_hexahedron_bounding_box(hexahedron_corners);
@@ -407,22 +544,43 @@ is_point_in_hexahedron(const xyz::Point &point,
     };
 
     if (method == "ray_casting") {
-        logger.debug("Using ray casting method for point-in-hexahedron check.");
         return is_point_in_hexahedron_using_raycasting(point, vertices);
     } else if (method == "tetrahedrons") {
-        logger.debug("Using tetrahedrons method for point-in-hexahedron check.");
         return is_point_in_hexahedron_using_tetrahedrons(point, vertices);
-    } else if (method == "centroid_tetrahedrons") {
-        logger.debug(
-          "Using centroid tetrahedrons method for point-in-hexahedron check.");
-        return is_point_in_hexahedron_using_centroid_tetrahedrons(point, vertices);
     } else if (method == "non_convex") {
-        logger.debug(
-          "Using centroid tetrahedrons method for point-in-hexahedron check.");
         return is_point_in_non_convex_hexahedron(point, vertices);
+    } else if (method == "using_planes") {
+        return is_point_in_hexahedron_using_planes(point, vertices, min_point,
+                                                   max_point);
+    } else if (method == "score_based") {
+        // evaluate using 4 methods and return the majority, except for cells that are
+        // clearly concave in projected plane, or very thin
+        if (is_hexahedron_thin(hexahedron_corners, 1e-6)) {
+            // Check if the cell is thin, using planes
+            return is_point_in_hexahedron_using_planes(point, vertices, min_point,
+                                                       max_point);
+        }
+
+        if (is_hexahedron_concave_projected(hexahedron_corners)) {
+            // Check if the cell is non-convex, using special method
+            return is_point_in_non_convex_hexahedron(point, vertices);
+        }
+        int count_ray = 0;
+        int count_tetra = 0;
+        int count_non_convex = 0;
+        count_ray += is_point_in_hexahedron_using_raycasting(point, vertices);
+        count_tetra += is_point_in_hexahedron_using_tetrahedrons(point, vertices);
+        count_non_convex += is_point_in_non_convex_hexahedron(point, vertices);
+        int count_sum = count_ray + count_tetra + count_non_convex;
+        if (count_sum == 1 || count_sum == 2) {
+            int count_sign = is_point_in_hexahedron_using_planes(point, vertices,
+                                                                 min_point, max_point);
+            count_sum += count_sign;
+        }
+        return count_sum >= 2;
     } else {
         throw std::invalid_argument("Invalid method for point-in-cell test");
     }
-}  // is_point_in_tetrahedron
+}  // is_point_in_hexahedron
 
 }  // namespace geometry

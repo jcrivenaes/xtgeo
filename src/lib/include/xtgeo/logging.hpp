@@ -134,94 +134,31 @@ public:
     template<typename... Args>
     void debug(const std::string &message, Args &&...args)
     {
-        bool enabled = false;
-        {
-            py::gil_scoped_acquire gil;
-            if (!m_logger) {
-                initialize_python_objects();
-            }
-            enabled = m_logger.attr("isEnabledFor")(m_debug_level).cast<bool>();
-        }
-
-        if (!enabled) {
-            return;  // Skip logging if debug level is not enabled
-        }
-
-        // Use a lambda to defer formatting until logging is confirmed
         log("debug", message, std::forward<Args>(args)...);
     }
-    // Other level methods similar to debug()...
+
     template<typename... Args>
     void info(const std::string &message, Args... args)
     {
-        bool enabled = false;
-        {
-            py::gil_scoped_acquire gil;
-            if (!m_logger) {
-                initialize_python_objects();
-            }
-            enabled = m_logger.attr("isEnabledFor")(m_info_level).cast<bool>();
-        }
-
-        if (!enabled) {
-            return;
-        }
-        // Use a lambda to defer formatting until logging is confirmed
         log("info", message, std::forward<Args>(args)...);
     }
 
     template<typename... Args>
     void warning(const std::string &message, Args... args)
     {
-        bool enabled = false;
-        {
-            py::gil_scoped_acquire gil;
-            if (!m_logger) {
-                initialize_python_objects();
-            }
-            enabled = m_logger.attr("isEnabledFor")(m_warning_level).cast<bool>();
-        }
-
-        if (!enabled) {
-            return;
-        }
         log("warning", message, std::forward<Args>(args)...);
     }
 
     template<typename... Args>
     void error(const std::string &message, Args... args)
     {
-        bool enabled = false;
-        {
-            py::gil_scoped_acquire gil;
-            if (!m_logger) {
-                initialize_python_objects();
-            }
-            enabled = m_logger.attr("isEnabledFor")(m_error_level).cast<bool>();
-        }
-
-        if (!enabled) {
-            return;
-        }
         log("error", message, std::forward<Args>(args)...);
     }
 
     template<typename... Args>
     void critical(const std::string &message, Args... args)
     {
-        bool enabled = false;
-        {
-            py::gil_scoped_acquire gil;
-            if (!m_logger) {
-                initialize_python_objects();
-            }
-            enabled = m_logger.attr("isEnabledFor")(m_critical_level).cast<bool>();
-        }
-
-        if (!enabled) {
-            return;
-        }
-        log("critical", message, args...);
+        log("critical", message, std::forward<Args>(args)...);
     }
 
 private:

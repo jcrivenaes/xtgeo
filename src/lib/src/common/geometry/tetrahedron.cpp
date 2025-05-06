@@ -103,18 +103,18 @@ calculate_relative_tolerance(const std::array<double, 5> &volumes,
  * Determines if a point is inside a tetrahedron using barycentric coordinates.
  * This version is robust against both left-handed and right-handed coordinate systems.
  */
-bool
-is_point_in_tetrahedron(const xyz::Point &p,
-                        const xyz::Point &a,
-                        const xyz::Point &b,
-                        const xyz::Point &c,
-                        const xyz::Point &d)
+static bool
+is_point_in_tetrahedron_signedsum(const xyz::Point &p,
+                                  const xyz::Point &a,
+                                  const xyz::Point &b,
+                                  const xyz::Point &c,
+                                  const xyz::Point &d)
 {
 
     // auto &logger =
     //   xtgeo::logging::LoggerManager::get("geometry::is_point_in_tetrahedron");
 
-    const double RELATIVE_EPSILON = 1e-8;
+    const double RELATIVE_EPSILON = 1e-12;
 
     // Calculate the signed volume of the tetrahedron
     double v0 = signed_tetrahedron_volume(a, b, c, d);
@@ -132,6 +132,8 @@ is_point_in_tetrahedron(const xyz::Point &p,
     // Calculate the relative tolerance
     std::array<double, 5> volumes = { v0, v1, v2, v3, v4 };
     double relative_tolerance = calculate_relative_tolerance(volumes, RELATIVE_EPSILON);
+
+    printf("------------------ Relative tolerance: %f\n", relative_tolerance);
 
     // Check for degenerate tetrahedron
     if (std::abs(v0) < relative_tolerance) {
@@ -160,4 +162,65 @@ is_point_in_tetrahedron(const xyz::Point &p,
             (v3 * sign >= -relative_tolerance) && (v4 * sign >= -relative_tolerance));
 }
 
+/**
+ * @brief Determines if a point is inside or on the edge of a tetrahedron using
+ * barycentric coordinates.
+ * @param p The point to check.
+ * @param a, b, c, d The vertices of the tetrahedron.
+ * @return bool True if the point is inside or on the edge, false otherwise.
+ */
+static bool
+is_point_in_tetrahedron_barycentric(const xyz::Point &p,
+                                    const xyz::Point &a,
+                                    const xyz::Point &b,
+                                    const xyz::Point &c,
+                                    const xyz::Point &d)
+{
+    // Helper function to compute the determinant of a 3x3 matrix
+    auto determinant = [](const xyz::Point &u, const xyz::Point &v,
+                          const xyz::Point &w) -> double {
+        return u.x * (v.y * w.z - v.z * w.y) - u.y * (v.x * w.z - v.z * w.x) +
+               u.z * (v.x * w.y - v.y * w.x);
+    };
+    // Compute vectors
+    xyz::Point ap = { p.x - a.x, p.y - a.y, p.z - a.z };
+    xyz::Point ab = { b.x - a.x, b.y - a.y, b.z - a.z };
+    xyz::Point ac = { c.x - a.x, c.y - a.y, c.z - a.z };
+    xyz::Point ad = { d.x - a.x, d.y - a.y, d.z - a.z };
+
+    // Compute the volume of the tetrahedron (main determinant)
+    double det_main = determinant(ab, ac, ad);
+
+    // Compute barycentric coordinates
+    double alpha = determinant(ap, ac, ad) / det_main;  // Weight for vertex a
+    double beta = determinant(ab, ap, ad) / det_main;   // Weight for vertex b
+    double gamma = determinant(ab, ac, ap) / det_main;  // Weight for vertex c
+    double delta = 1.0 - alpha - beta - gamma;          // Weight for vertex d
+
+    // Check if the point is inside or on the edge
+    const double EPSILON = 1e-12;  // Tolerance for numerical precision
+    return (alpha >= -EPSILON && beta >= -EPSILON && gamma >= -EPSILON &&
+            delta >= -EPSILON);
+}
+
+bool
+is_point_in_tetrahedron(const xyz::Point &point,
+                        const xyz::Point &a,
+                        const xyz::Point &b,
+                        const xyz::Point &c,
+                        const xyz::Point &d,
+                        const std::string &method)
+{
+    // Check if the method is valid
+    if (method != "barycentric" && method != "signedsum") {
+        throw std::invalid_argument("Invalid method: " + method);
+    }
+
+    // Select the appropriate method
+    if (method == "barycentric") {
+        return is_point_in_tetrahedron_barycentric(point, a, b, c, d);
+    } else {
+        return is_point_in_tetrahedron_signedsum(point, a, b, c, d);
+    }
+}
 }  // namespace xtgeo::geometry
