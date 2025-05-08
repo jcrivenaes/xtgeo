@@ -475,66 +475,39 @@ def get_ijk_from_points(
     """Get I J K indices as a list of tuples or a dataframe.
 
     It is here tried to get fast execution. This requires a preprosessing
-    of the grid to store a onlayer version, and maps with IJ positions
+    of the grid to store a onelayer version, and maps with IJ positions. This is
+    stored as a cache variable we can derive.
     """
     logger.info("Getting IJK indices from Points...")
 
-    actnumoption = 1 if activeonly else 0
+    self._xtgformat2()
 
-    self._xtgformat1()
-    _update_tmpvars(self, force=True)
+    cache = self._get_cache()
 
     points_df = points.get_dataframe(copy=False)
-    arrsize = points_df[points.xname].values.size
 
-    useflip = -1 if self.ijk_handedness == "left" else 1
+    p_array = points.get_xyz_arrays()
 
-    logger.info("Grid FLIP for C code is %s", useflip)
-    self._tmp["onegrid"]._xtgformat1()  # to be sure...
-
-    logger.info("Running C routine...")
-
-    _, iarr, jarr, karr = _cxtgeo.grd3d_points_ijk_cells(
-        points_df[points.xname].values,
-        points_df[points.yname].values,
-        points_df[points.zname].values,
-        self._tmp["topd"].ncol,
-        self._tmp["topd"].nrow,
-        self._tmp["topd"].xori,
-        self._tmp["topd"].yori,
-        self._tmp["topd"].xinc,
-        self._tmp["topd"].yinc,
-        self._tmp["topd"].rotation,
-        self._tmp["topd"].yflip,
-        self._tmp["topi_carr"],
-        self._tmp["topj_carr"],
-        self._tmp["basi_carr"],
-        self._tmp["basj_carr"],
-        self.ncol,
-        self.nrow,
-        self.nlay,
-        self._coordsv.ravel(),
-        self._zcornsv.ravel(),
-        self._actnumsv.ravel(),
-        self._tmp["onegrid"]._zcornsv,
-        actnumoption,
-        arrsize,
-        arrsize,
-        arrsize,
+    iarr, jarr, karr = _internal.grid3d.Grid(self).get_indices_from_pointset(
+        _internal.xyz.PointSet(p_array),
+        cache.onegrid_cpp,
+        cache.top_i_index_cpp,
+        cache.top_j_index_cpp,
+        cache.base_i_index_cpp,
+        cache.base_j_index_cpp,
+        activeonly,
     )
-    logger.info("Running C routine... DONE")
 
-    if zerobased:
-        # zero based cell indexing
-        iarr -= 1
-        jarr -= 1
-        karr -= 1
+    if not zerobased:
+        iarr = np.where(iarr >= 0, iarr + 1, iarr)
+        jarr = np.where(jarr >= 0, jarr + 1, jarr)
+        karr = np.where(karr >= 0, karr + 1, karr)
 
     proplist = {}
     if includepoints:
-        proplist["X_UTME"] = points_df[points.xname].values
-        proplist["Y_UTME"] = points_df[points.yname].values
-        proplist["Z_TVDSS"] = points_df[points.zname].values
+        proplist["X_UTME"] = points_df[points.xname].to_numpy()
+        proplist["Y_UTME"] = points_df[points.yname].to_numpy()
+        proplist["Z_TVDSS"] = points_df[points.zname].to_numpy()
 
     proplist[columnnames[0]] = iarr
     proplist[columnnames[1]] = jarr
@@ -553,6 +526,9 @@ def get_ijk_from_points(
         mydataframe[columnnames[1]] = mydataframe[columnnames[1]].replace(-1, undef)
         mydataframe[columnnames[2]] = mydataframe[columnnames[2]].replace(-1, undef)
 
+    logger.info(
+        "Getting IJK indices from Points... done, found %d points", len(mydataframe)
+    )
     if dataframe:
         return mydataframe
 
@@ -1076,7 +1052,7 @@ def collapse_inactive_cells(self: Grid) -> None:
 
 
 def copy(self: Grid) -> Grid:
-    """Copy a grid instance (C pointers) and other props.
+    """Copy a grid instance.
 
     Returns:
         A new instance (attached grid properties will also be unique)

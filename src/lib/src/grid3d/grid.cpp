@@ -247,4 +247,52 @@ create_grid_from_cube(const cube::Cube &cube,
     return std::make_tuple(coordsv, zcornsv, actnumsv);
 }
 
+/** @brief Get bounding box for 3D grid
+ * @param Grid input grid
+ * @return A tuple of two points, minimum values and maximum values
+ */
+
+std::tuple<xyz::Point, xyz::Point>
+get_bounding_box(const Grid &grid)
+{
+    // Initialize min and max values
+    double xmin = std::numeric_limits<double>::max();
+    double xmax = std::numeric_limits<double>::lowest();
+    double ymin = std::numeric_limits<double>::max();
+    double ymax = std::numeric_limits<double>::lowest();
+    double zmin = std::numeric_limits<double>::max();
+    double zmax = std::numeric_limits<double>::lowest();
+
+    Grid onelayer_grid = extract_onelayer_grid(grid);
+
+    // Step 2: Loop through all cells and find min/max values
+    for (size_t i = 0; i < grid.ncol; i++) {
+        for (size_t j = 0; j < grid.nrow; j++) {
+            // Get the corners of the cell
+            CellCorners corners = get_cell_corners_from_ijk(onelayer_grid, i, j, 0);
+
+            // Loop through the 8 corners to find min/max values
+            std::array<xyz::Point, 8> corner_points = {
+                corners.upper_sw, corners.upper_se, corners.upper_nw, corners.upper_ne,
+                corners.lower_sw, corners.lower_se, corners.lower_nw, corners.lower_ne
+            };
+
+            for (const auto &point : corner_points) {
+                xmin = std::min(xmin, point.x);
+                xmax = std::max(xmax, point.x);
+                ymin = std::min(ymin, point.y);
+                ymax = std::max(ymax, point.y);
+                zmin = std::min(zmin, point.z);
+                zmax = std::max(zmax, point.z);
+            }
+        }
+    }
+
+    // Create points to return
+    xyz::Point minv = { xmin, ymin, zmin };
+    xyz::Point maxv = { xmax, ymax, zmax };
+
+    return std::make_tuple(minv, maxv);
+}
+
 }  // namespace xtgeo::grid3d
