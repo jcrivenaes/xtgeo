@@ -237,6 +237,62 @@ is_point_in_tetrahedron_barycentric(const xyz::Point &p,
             delta >= -epsilon);
 }
 
+/**
+ * @brief Determines if a point is inside a tetrahedron using volume sum method.
+ *
+ * This method checks if a point is inside a tetrahedron by comparing the original
+ * tetrahedron volume with the sum of volumes created by replacing each vertex
+ * with the test point. If the volumes match, the point is inside.
+ *
+ * @param point The point to test
+ * @param v0,v1,v2,v3 The four vertices of the tetrahedron
+ * @param tolerance_scaler A scaling factor for numerical tolerance
+ * @return true if point is inside the tetrahedron, false otherwise
+ */
+bool
+is_point_in_tetrahedron_volume_sum(const Point &point,
+                                   const Point &v0,
+                                   const Point &v1,
+                                   const Point &v2,
+                                   const Point &v3,
+                                   const double tolerance_scaler)
+{
+    auto &logger = xtgeo::logging::LoggerManager::get("xtgeo.geometry");
+
+    // Calculate original tetrahedron volume
+    double true_vol = std::abs(signed_tetrahedron_volume(v0, v1, v2, v3));
+
+    // If tetrahedron is degenerate, point can't be inside
+    if (true_vol < numerics::TOLERANCE) {
+        return false;
+    }
+
+    // Calculate volumes of the four tetrahedra formed with the point
+    double vol1 = std::abs(signed_tetrahedron_volume(point, v1, v2, v3));
+    double vol2 = std::abs(signed_tetrahedron_volume(v0, point, v2, v3));
+    double vol3 = std::abs(signed_tetrahedron_volume(v0, v1, point, v3));
+    double vol4 = std::abs(signed_tetrahedron_volume(v0, v1, v2, point));
+
+    // Sum of the four volumes
+    double sum_vol = vol1 + vol2 + vol3 + vol4;
+
+    // Calculate relative error tolerance
+    double rel_error = true_vol * 0.001 * tolerance_scaler;
+    double diff = sum_vol - true_vol;
+
+    // If sum is less than original (accounting for floating point error),
+    // something is wrong with our calculation
+    if (diff < -rel_error) {
+        logger.warning(
+          "Negative volume difference detected in tetrahedron point test: {} < -{}",
+          diff, rel_error);
+        return false;
+    }
+
+    // If volumes match within tolerance, point is inside
+    return std::abs(diff) <= rel_error;
+}
+
 bool
 is_point_in_tetrahedron(const xyz::Point &point,
                         const xyz::Point &a,
@@ -267,10 +323,12 @@ is_point_in_tetrahedron(const xyz::Point &point,
         return magnitude_squared(subtract(point, a)) < epsilon;
     }
 
-    if (is_tetrahedron_degenerate(a, b, c, d)) {
-        return is_point_in_tetrahedron_signedsum(point, a, b, c, d, epsilon);
-    } else {
-        return is_point_in_tetrahedron_barycentric(point, a, b, c, d, epsilon);
-    }
+    return is_point_in_tetrahedron_volume_sum(point, a, b, c, d, tolerance_scaler);
+
+    // if (is_tetrahedron_degenerate(a, b, c, d)) {
+    //     return is_point_in_tetrahedron_signedsum(point, a, b, c, d, epsilon);
+    // } else {
+    //     return is_point_in_tetrahedron_barycentric(point, a, b, c, d, epsilon);
+    // }
 }
 }  // namespace xtgeo::geometry
