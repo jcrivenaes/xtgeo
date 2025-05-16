@@ -52,7 +52,11 @@ pybind11_add_module(
   _internal
   "${SRC}/init.cpp"
   "${SRC}/common/geometry/hexahedron_eval.cpp"
-  "${SRC}/common/geometry/hexahedron_point_in.cpp"
+  "${SRC}/common/geometry/hexahedron_point_in_raycasting.cpp"
+  "${SRC}/common/geometry/hexahedron_point_in_usingplanes.cpp"
+  "${SRC}/common/geometry/hexahedron_point_in_isoparametric.cpp"
+  "${SRC}/common/geometry/hexahedron_point_in_tetrahedrons_legacy.cpp"
+  "${SRC}/common/geometry/hexahedron_point_in_tetrahedrons_by_scheme.cpp"
   "${SRC}/common/geometry/interpolate.cpp"
   "${SRC}/common/geometry/polygons.cpp"
   "${SRC}/common/geometry/quadrilateral.cpp"

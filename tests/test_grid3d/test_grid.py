@@ -505,6 +505,7 @@ def test_bulkvol_banal6(testdata_path):
     """Test cell bulk volume calculation."""
     grd = xtgeo.grid_from_file(testdata_path / BANAL6)
     bulkvol = grd.get_bulk_volume()
+    bulkvol.to_file("/tmp/banal6.roff")
 
     bulkvol_sum = np.sum(bulkvol.values)
 

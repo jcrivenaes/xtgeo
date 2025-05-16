@@ -17,114 +17,35 @@ enum class PointInHexahedronMethod
 {
     RayCasting,
     Tetrahedrons,
-    SignedVolumes,
-    NonConvex,
     UsingPlanes,
-    ScoreBased
+    Legacy,
+    Isoparametric,
+    Optimized  // combing approriate methods
 };
 
 // =====================================================================================
 // TETRAHEDRONS
 // =====================================================================================
 
-constexpr int TETRAHEDRON_VERTICES[4][6][4] = {
-    // cell top/base hinge is splittet 0 - 3 / 4 - 7
-    {
-      // lower right common vertex 5
-      { 3, 7, 4, 5 },
-      { 0, 4, 7, 5 },
-      { 0, 3, 1, 5 },
-      // upper left common vertex 6
-      { 0, 4, 7, 6 },
-      { 3, 7, 4, 6 },
-      { 0, 3, 2, 6 },
-    },
+double
+signed_tetrahedron_volume(const xyz::Point &a,
+                          const xyz::Point &b,
+                          const xyz::Point &c,
+                          const xyz::Point &d);
 
-    // cell top/base hinge is splittet 1 -2 / 5- 6
-    {
-      // upper right common vertex 7
-      { 1, 5, 6, 7 },
-      { 2, 6, 5, 7 },
-      { 1, 2, 3, 7 },
-      // lower left common vertex 4
-      { 1, 5, 6, 4 },
-      { 2, 6, 5, 4 },
-      { 1, 2, 0, 4 },
-    },
-
-    // Another combination...
-    // cell top/base hinge is splittet 0 - 3 / 4 - 7
-    {
-      // lower right common vertex 1
-      { 3, 7, 0, 1 },
-      { 0, 4, 3, 1 },
-      { 4, 7, 5, 1 },
-      // upper left common vertex 2
-      { 0, 4, 3, 2 },
-      { 3, 7, 0, 2 },
-      { 4, 7, 6, 2 },
-    },
-
-    // cell top/base hinge is splittet 1 -2 / 5- 6
-    { // upper right common vertex 3
-      { 1, 5, 2, 3 },
-      { 2, 6, 1, 3 },
-      { 5, 6, 7, 3 },
-      // lower left common vertex 0
-      { 1, 5, 2, 0 },
-      { 2, 6, 1, 0 },
-      { 5, 6, 4, 0 } }
-};
-
-// schemes used for tetrahedron decomposition when the cell is re-arranged to
-// counter clock order.
-constexpr int TETRAHEDRON_SCHEMES[4][6][4] = {
-    // Scheme 0: Diagonal 0-2 at top and 4-6 at base
-    {
-      { 0, 1, 2, 6 },  // Top face: diagonal 0-2
-      { 0, 2, 3, 6 },  // Top face: diagonal 0-2
-      { 4, 5, 6, 0 },  // Base face: diagonal 4-6
-      { 4, 6, 7, 0 },  // Base face: diagonal 4-6
-      { 0, 1, 5, 6 },  // Front face
-      { 3, 7, 6, 2 }   // Back face
-    },
-    // Scheme 1: Diagonal 0-2 at top and 5-7 at base
-    {
-      { 0, 1, 2, 6 },  // Top face: diagonal 0-2
-      { 0, 2, 3, 6 },  // Top face: diagonal 0-2
-      { 4, 5, 7, 3 },  // Base face: diagonal 5-7
-      { 5, 6, 7, 3 },  // Base face: diagonal 5-7
-      { 0, 1, 5, 6 },  // Front face
-      { 3, 7, 6, 2 }   // Back face
-    },
-    // Scheme 2: Diagonal 1-3 at top and 4-6 at base
-    {
-      { 0, 1, 3, 7 },  // Top face: diagonal 1-3
-      { 1, 2, 3, 7 },  // Top face: diagonal 1-3
-      { 4, 5, 6, 0 },  // Base face: diagonal 4-6
-      { 4, 6, 7, 0 },  // Base face: diagonal 4-6
-      { 0, 1, 5, 7 },  // Front face
-      { 2, 3, 7, 6 }   // Back face
-    },
-    // Scheme 3: Diagonal 1-3 at top and 5-7 at base
-    {
-      { 0, 1, 3, 7 },  // Top face: diagonal 1-3
-      { 1, 2, 3, 7 },  // Top face: diagonal 1-3
-      { 4, 5, 7, 3 },  // Base face: diagonal 5-7
-      { 5, 6, 7, 3 },  // Base face: diagonal 5-7
-      { 0, 1, 5, 7 },  // Front face
-      { 2, 3, 7, 6 }   // Back face
-    }
-};
-
-bool
+int
 is_point_in_tetrahedron(const xyz::Point &point,
                         const xyz::Point &v0,
                         const xyz::Point &v1,
                         const xyz::Point &v2,
-                        const xyz::Point &v3,
-                        const double tolerance_scaler = 1.0);
+                        const xyz::Point &v3);
 
+bool
+is_point_in_tetrahedron_legacy(const xyz::Point &point,
+                               const xyz::Point &v0,
+                               const xyz::Point &v1,
+                               const xyz::Point &v2,
+                               const xyz::Point &v3);
 // =====================================================================================
 // POLYGONS (TRIANGLES, QUADRILATERALS, ...)
 // =====================================================================================
@@ -198,16 +119,37 @@ hexahedron_dz(const HexahedronCorners &corners)
 }
 
 double
-hexahedron_volume(const HexahedronCorners &corners, const int precision);
+hexahedron_volume_legacy(const HexahedronCorners &corners, const int precision);
+
 // overload for CellCorners
 double
-hexahedron_volume(const grid3d::CellCorners &corners, const int precision);
+hexahedron_volume_legacy(const grid3d::CellCorners &corners, const int precision);
+
+double
+hexahedron_volume(const HexahedronCorners &corners);
+
+// overload for CellCorners
+double
+hexahedron_volume(const grid3d::CellCorners &corners);
 
 bool
-is_point_in_hexahedron(const xyz::Point &point,
-                       const HexahedronCorners &corners,
-                       PointInHexahedronMethod method,
-                       const double tolerance_scaler = 1.0);
+is_point_in_hexahedron_raycasting(const xyz::Point &point,
+                                  const HexahedronCorners &corners);
+bool
+is_point_in_hexahedron_usingplanes(const xyz::Point &point,
+                                   const HexahedronCorners &corners);
+int
+is_point_in_hexahedron_tetrahedrons_legacy(const xyz::Point &point,
+                                           const HexahedronCorners &corners);
+
+bool
+is_point_in_hexahedron_tetrahedrons_by_scheme(const xyz::Point &point,
+                                              const HexahedronCorners &corners);
+
+int
+is_point_in_hexahedron_isoparametric(const xyz::Point &point,
+                                     const HexahedronCorners &corners);
+
 bool
 is_hexahedron_non_convex(const HexahedronCorners &corners);
 
@@ -226,6 +168,14 @@ get_hexahedron_minmax(const HexahedronCorners &corners);
 std::tuple<xyz::Point, xyz::Point>
 get_hexahedron_bounding_box(const HexahedronCorners &corners);
 
+bool
+is_point_in_hexahedron_bounding_box(const xyz::Point &point,
+                                    const HexahedronCorners &hexahedron_corners);
+bool
+is_point_in_hexahedron_bounding_box_minmax_pt(const xyz::Point &point,
+                                              const xyz::Point &min_pt,
+                                              const xyz::Point &max_pt);
+
 // =====================================================================================
 // PYTHON BINDINGS
 // =====================================================================================
@@ -237,10 +187,10 @@ init(py::module &m)
     py::enum_<PointInHexahedronMethod>(m_geometry, "PointInHexahedronMethod")
       .value("RayCasting", PointInHexahedronMethod::RayCasting)
       .value("Tetrahedrons", PointInHexahedronMethod::Tetrahedrons)
-      .value("SignedVolumes", PointInHexahedronMethod::SignedVolumes)
-      .value("NonConvex", PointInHexahedronMethod::NonConvex)
       .value("UsingPlanes", PointInHexahedronMethod::UsingPlanes)
-      .value("ScoreBased", PointInHexahedronMethod::ScoreBased)
+      .value("Legacy", PointInHexahedronMethod::Legacy)
+      .value("Isoparametric", PointInHexahedronMethod::Isoparametric)
+      .value("Optimized", PointInHexahedronMethod::Optimized)
       .export_values();  // Makes the enum values accessible as attributes of the enum
 
     py::class_<HexahedronCorners>(m_geometry, "HexahedronCorners")
@@ -264,12 +214,19 @@ init(py::module &m)
 
     m_geometry.def(
       "hexahedron_volume",
-      [](const grid3d::CellCorners &corners,
-         int precision) {  // overload for CellCorners
-          return hexahedron_volume(corners, precision);
+      [](const grid3d::CellCorners &corners) {  // overload for CellCorners
+          return hexahedron_volume(corners);
       },
       "Estimate the volume of a hexahedron i.e. a cornerpoint cell using "
       "CornerPoints.");
+    m_geometry.def(
+      "hexahedron_volume_legacy",
+      [](const grid3d::CellCorners &corners, const int precision) {
+          return hexahedron_volume_legacy(corners, precision);
+      },
+      "Estimate the volume of a hexahedron i.e. a cornerpoint cell using "
+      "CornerPoints.");
+
     m_geometry.def("is_xy_point_in_polygon", &is_xy_point_in_polygon,
                    "Return True if a XY point is inside a polygon seen from above, "
                    "False otherwise.");
@@ -291,11 +248,6 @@ init(py::module &m)
                    py::arg("x"), py::arg("y"), py::arg("p1"), py::arg("p2"),
                    py::arg("p3"), py::arg("p4"),
                    py::arg("tolerance") = numerics::TOLERANCE);
-    m_geometry.def("is_point_in_hexahedron", &is_point_in_hexahedron,
-                   "Determine if a point XYZ is inside a hexahedron, with method",
-                   py::arg("point"), py::arg("corners"),
-                   py::arg("method") = PointInHexahedronMethod::ScoreBased,
-                   py::arg("tolerance_scaler") = 1.0);
     m_geometry.def("is_hexahedron_non_convex", &is_hexahedron_non_convex,
                    "Determine if a hexahedron is non-convex");
     m_geometry.def("is_hexahedron_severely_distorted",

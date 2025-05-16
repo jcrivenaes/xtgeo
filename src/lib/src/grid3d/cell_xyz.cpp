@@ -73,24 +73,92 @@ is_xy_point_in_cell(const double x,
 }  // is_xy_point_in_cell
 
 /**
+ * @brief Local function to check if a 3D point is inside a cell defined by its corners,
+ * using an optimized approach. The optimized approach uses a combination of methods to
+ * quickly determine if the point is inside the cell.
+ *
+ * @param point The point to check (right-handed coordinate system)
+ * @param corners The hexahedron corners of the cell
+ * @return true if the point is inside or on the boundary of the cell, false otherwise
+ */
+
+static bool
+is_point_in_cell_optimized(const xyz::Point &rh_point,
+                           const geometry::HexahedronCorners &hx_corners)
+{
+
+    if (geometry::is_hexahedron_concave_projected(hx_corners)) {
+        return geometry::is_point_in_hexahedron_usingplanes(rh_point, hx_corners);
+    } else {
+        int result =
+          geometry::is_point_in_hexahedron_isoparametric(rh_point, hx_corners);
+
+        if (result == 0) {
+            return false;
+        } else if (result >= 1) {
+            return true;
+        } else {
+            throw std::invalid_argument(
+              "Return value of -1 from is_point_in_hexahedron_isoparametric");
+        }
+        return false;
+    }
+    return false;
+}
+
+/**
  * @brief Check if a 3D point is inside a cell defined by its corners.
  *
  * @param point The point to check
  * @param corners The corners of the cell
- * @return true if the point is inside the cell, false otherwise
+ * @param method The method to use for the test
+ * @return true if the point is inside or boundary of the cell, false otherwise
  */
 bool
 is_point_in_cell(const xyz::Point &point,
                  const CellCorners &corners,
-                 geometry::PointInHexahedronMethod method,
-                 const double tolerance_scaler)
+                 geometry::PointInHexahedronMethod method)
 {
     // convert to right handed system and HexahedronCorners
     auto hexahedron_corners = corners.to_hexahedron_corners();
     auto rh_point = xyz::Point(point.x, point.y, -point.z);
 
-    return geometry::is_point_in_hexahedron(rh_point, hexahedron_corners, method,
-                                            tolerance_scaler);
+    if (!geometry::is_point_in_hexahedron_bounding_box(rh_point, hexahedron_corners)) {
+        return false;  // Quick rejection test, independent of the method
+    }
+
+    switch (method) {
+        case geometry::PointInHexahedronMethod::Isoparametric: {
+            int res = geometry::is_point_in_hexahedron_isoparametric(
+              rh_point, hexahedron_corners);
+            return res >= 1;  // 1: inside, 2: on the boundary
+        }
+
+        case geometry::PointInHexahedronMethod::RayCasting:
+            return geometry::is_point_in_hexahedron_raycasting(rh_point,
+                                                               hexahedron_corners);
+
+        case geometry::PointInHexahedronMethod::UsingPlanes:
+            return geometry::is_point_in_hexahedron_usingplanes(rh_point,
+                                                                hexahedron_corners);
+        case geometry::PointInHexahedronMethod::Legacy: {
+            int result = geometry::is_point_in_hexahedron_tetrahedrons_legacy(
+              rh_point, hexahedron_corners);
+            return result >= 1;  // 1: uncertain, 2: inside
+        }
+
+        case geometry::PointInHexahedronMethod::Tetrahedrons: {
+            bool result = geometry::is_point_in_hexahedron_tetrahedrons_by_scheme(
+              rh_point, hexahedron_corners);
+            return result;
+        }
+
+        case geometry::PointInHexahedronMethod::Optimized:
+            return is_point_in_cell_optimized(rh_point, hexahedron_corners);
+
+        default:
+            return false;
+    }
 }
 
 }  // namespace xtgeo::grid3d

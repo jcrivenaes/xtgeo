@@ -278,16 +278,15 @@ def get_bulk_volume(
     grid: Grid,
     name: str = "bulkvol",
     asmasked: bool = True,
-    precision: Literal[1, 2, 4] = 2,
 ) -> GridProperty:
     """Get cell bulk volume as a GridProperty() instance."""
-    if precision not in (1, 2, 4):
-        raise ValueError("The precision key has an invalid entry, use 1, 2, or 4")
+    # if precision not in (1, 2, 4):
+    #     raise ValueError("The precision key has an invalid entry, use 1, 2, or 4")
     grid._xtgformat2()
 
     grid_cpp = _internal.grid3d.Grid(grid)
 
-    bulk_values = grid_cpp.get_cell_volumes(precision, asmasked)
+    bulk_values = grid_cpp.get_cell_volumes(asmasked)
     if asmasked:
         bulk_values = np.ma.masked_greater(bulk_values, UNDEF_LIMIT)
 
@@ -790,7 +789,7 @@ def get_cell_volume(
         j + shift - 1,
         k + shift - 1,
     )
-    return _internal.geometry.hexahedron_volume(corners, precision)
+    return _internal.geometry.hexahedron_volume(corners)
 
 
 def get_layer_slice(

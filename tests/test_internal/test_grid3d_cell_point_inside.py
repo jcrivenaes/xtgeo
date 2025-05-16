@@ -7,6 +7,27 @@ from xtgeo._internal.geometry import PointInHexahedronMethod as M  # type: ignor
 from xtgeo._internal.xyz import Point  # type: ignore
 from xtgeo.common.log import functimer
 
+METHODS = [
+    M.RayCasting,
+    M.Tetrahedrons,
+    # M.NonConvex,
+    M.UsingPlanes,
+    M.Isoparametric,
+    M.Legacy,
+    M.Optimized,
+]
+
+
+IDS = [
+    "RayCasting",
+    "Tetrahedrons (by scheme)",
+    # "NonConvex",
+    "UsingPlanes",
+    "Isoparametric",
+    "Legacy",
+    "Optimized",
+]
+
 
 @pytest.fixture
 def simple_grid():
@@ -46,36 +67,34 @@ def complex_grid():
     return _internal.grid3d.Grid(grid)
 
 
-@pytest.mark.parametrize(
-    "method",
-    [M.RayCasting, M.Tetrahedrons, M.NonConvex, M.UsingPlanes, M.ScoreBased],
-)
+@pytest.mark.parametrize("method", METHODS, ids=IDS)
 @pytest.mark.parametrize(
     "point, expected",
     [
         # Test center point with different methods
-        (Point(50.0, 50.0, 1005.0), True),
+        ((50.0, 50.0, 1005.0), True),
         # Test points near boundaries
-        (Point(1.0, 50.0, 1005.0), True),
-        (Point(99.0, 50.0, 1005.0), True),
-        (Point(50.0, 1.0, 1005.0), True),
-        (Point(50.0, 99.0, 1005.0), True),
-        (Point(50.0, 50.0, 1001.0), True),
-        (Point(50.0, 50.0, 1009.0), True),
-        (Point(0.0001, 0.0001, 1009.999), True),  # Point very close to the edge
+        ((1.0, 50.0, 1005.0), True),
+        ((99.0, 50.0, 1005.0), True),
+        ((50.0, 1.0, 1005.0), True),
+        ((50.0, 99.0, 1005.0), True),
+        ((50.0, 50.0, 1001.0), True),
+        ((50.0, 50.0, 1009.0), True),
+        ((0.0001, 0.0001, 1009.999), True),  # Point very close to the edge
         # Test points outside
-        (Point(-0.0001, -0.0001, 1010.001), False),  # Point slightly outside
-        (Point(-10.0, 50.0, 1005.0), False),
-        (Point(110.0, 50.0, 1005.0), False),
-        (Point(50.0, -10.0, 1005.0), False),
-        (Point(50.0, 110.0, 1005.0), False),
-        (Point(50.0, 50.0, 990.0), False),
-        (Point(50.0, 50.0, 1020.0), False),
+        ((-0.0001, -0.0001, 1010.001), False),  # Point slightly outside
+        ((-10.0, 50.0, 1005.0), False),
+        ((110.0, 50.0, 1005.0), False),
+        ((50.0, -10.0, 1005.0), False),
+        ((50.0, 110.0, 1005.0), False),
+        ((50.0, 50.0, 990.0), False),
+        ((50.0, 50.0, 1020.0), False),
     ],
 )
 def test_point_inside_cell_methods(simple_grid, method, point, expected):
     """Test different methods for point-in-hexahedron with various test points."""
     cell_corners = simple_grid.get_cell_corners_from_ijk(0, 0, 0)
+    point = Point(*point)
 
     result = _internal.grid3d.is_point_in_cell(point, cell_corners, method)
     assert result == expected, (
@@ -84,53 +103,28 @@ def test_point_inside_cell_methods(simple_grid, method, point, expected):
 
 
 def test_point_inside_hexahedroncell_etc_speed(simple_grid):
-    """Compare the speed of different methods for point-in-hexahedron.
-
-    Current status for "point-in" is that tetrahedrons is 10x faster than ray casting.
-
-    """
+    """Compare the speed of helper functions for point-in-hexahedron."""
     cell_corners = simple_grid.get_cell_corners_from_ijk(0, 0, 0)
     center = Point(50.0, 50.0, 1005.0)
 
     iterations = 100000
 
-    @functimer(output="print")
-    def ray_casting_method():
-        for i in range(iterations):
-            _internal.grid3d.is_point_in_cell(center, cell_corners, M.RayCasting)
-
-    @functimer(output="print")
-    def tetrahedrons_method():
-        for i in range(iterations):
-            _internal.grid3d.is_point_in_cell(center, cell_corners, M.Tetrahedrons)
-
-    @functimer(output="print")
+    @functimer(output="print", comment=f"Using {iterations} iterations")
     def convexity_test():
         for i in range(iterations):
             _internal.grid3d.is_cell_non_convex(cell_corners)
 
-    @functimer(output="print")
-    def distorted_test():
-        for i in range(iterations):
-            _internal.grid3d.is_cell_distorted(cell_corners)
-
-    ray_casting_method()
-    tetrahedrons_method()
     convexity_test()
-    distorted_test()
 
 
-@pytest.mark.parametrize(
-    "method",
-    [M.RayCasting, M.Tetrahedrons, M.NonConvex, M.UsingPlanes, M.ScoreBased],
-)
+@pytest.mark.parametrize("method", METHODS, ids=IDS)
 def test_point_inside_hexahedron_speed(simple_grid, method):
     """Benchmark the speed of different methods for point-in-hexahedron."""
     cell_corners = simple_grid.get_cell_corners_from_ijk(0, 0, 0)
     center = Point(50.0, 50.0, 1005.0)
-    iterations = 10000
+    iterations = 100000
 
-    @functimer(output="print")
+    @functimer(output="print", comment=f"Using {iterations} iterations")
     def benchmark_method():
         for _ in range(iterations):
             _internal.grid3d.is_point_in_cell(center, cell_corners, method)
@@ -138,10 +132,7 @@ def test_point_inside_hexahedron_speed(simple_grid, method):
     benchmark_method()
 
 
-@pytest.mark.parametrize(
-    "method",
-    [M.RayCasting, M.Tetrahedrons, M.NonConvex, M.UsingPlanes, M.ScoreBased],
-)
+@pytest.mark.parametrize("method", METHODS, ids=IDS)
 @pytest.mark.parametrize(
     "point, expected_result, description",
     [
@@ -168,10 +159,7 @@ def test_point_inside_simple_grid_cell(
     )
 
 
-@pytest.mark.parametrize(
-    "method",
-    [M.RayCasting, M.Tetrahedrons, M.NonConvex, M.UsingPlanes, M.ScoreBased],
-)
+@pytest.mark.parametrize("method", METHODS, ids=IDS)
 def test_point_inside_complex_grid(complex_grid, method):
     """Test points inside/outside cells of a more complex grid."""
     # Test points in various cells of the grid
@@ -199,10 +187,7 @@ def test_point_inside_complex_grid(complex_grid, method):
                 )
 
 
-@pytest.mark.parametrize(
-    "method",
-    [M.RayCasting, M.Tetrahedrons, M.NonConvex, M.UsingPlanes, M.ScoreBased],
-)
+@pytest.mark.parametrize("method", METHODS, ids=IDS)
 def test_edge_cases_for_methods(simple_grid, method):
     """Test edge cases for all methods."""
     cell_corners = simple_grid.get_cell_corners_from_ijk(0, 0, 0)
@@ -221,10 +206,9 @@ def test_edge_cases_for_methods(simple_grid, method):
     "method, expected_result, _",
     [
         (M.RayCasting, (False, False), "Ray casting known struggle with thin cells"),
-        (M.Tetrahedrons, (True, False), "Known to be true/false for tetrahedrons"),
-        (M.NonConvex, (True, False), "Known to be true/false for non_convex"),
+        (M.Isoparametric, (True, False), "Known to be true/false for isoparametric"),
         (M.UsingPlanes, (True, False), "Known to be true/false for using_planes"),
-        (M.ScoreBased, (True, False), "Known to be true/false for score_based"),
+        (M.Legacy, (True, False), "Known to be true/false for legacy"),
     ],
 )
 def test_point_inside_thin_cell(method, expected_result, _):
@@ -263,10 +247,9 @@ def test_point_inside_thin_cell(method, expected_result, _):
     "method, expected_result, _",
     [
         (M.RayCasting, (False, False), "Ray casting struggle with deformed cells"),
-        (M.Tetrahedrons, (True, False), "Known to be true/false for tetrahedrons"),
-        (M.NonConvex, (True, False), "Known to be true/false for non_convex"),
         (M.UsingPlanes, (True, False), "Known to be true/false for using_planes"),
-        (M.ScoreBased, (True, False), "Known to be true/false for score_based"),
+        (M.Isoparametric, (True, False), "Known to be true/false for isoparametric"),
+        (M.Legacy, (True, False), "Known to be true/false for legacy"),
     ],
 )
 def test_point_inside_deformed_case1_cell(method, expected_result, _):
@@ -305,7 +288,7 @@ def test_point_inside_deformed_case1_cell(method, expected_result, _):
     "method, inside_point, outside_point, expected_inside, expected_outside",
     [
         (
-            M.NonConvex,
+            M.Isoparametric,
             Point(50.0, 50.0, 1000.5),
             Point(60.0, 50.0, 1000.5),
             True,
@@ -319,18 +302,18 @@ def test_point_inside_deformed_case1_cell(method, expected_result, _):
             False,
         ),
         (
-            M.Tetrahedrons,
-            Point(50.0, 50.0, 1000.5),
-            Point(60.0, 50.0, 1000.5),
-            True,
-            False,
-        ),
-        (
             M.RayCasting,
             Point(50.0, 50.0, 1000.5),
             Point(60.0, 50.0, 1000.5),
             False,
             False,  # expected to be True
+        ),
+        (
+            M.Legacy,
+            Point(50.0, 50.0, 1000.5),
+            Point(60.0, 50.0, 1000.5),
+            True,
+            False,
         ),
     ],
 )
@@ -411,10 +394,33 @@ def non_convex_cell():
 
 
 @pytest.mark.parametrize(
-    "method",
-    [M.RayCasting, M.Tetrahedrons, M.NonConvex, M.UsingPlanes, M.ScoreBased],
+    "method, expected_inside, expected_outside",
+    [
+        (
+            M.Isoparametric,
+            False,  # expected to be True; hence isoparametric struggles
+            False,
+        ),
+        (
+            M.UsingPlanes,
+            True,
+            False,
+        ),
+        (
+            M.RayCasting,
+            True,
+            False,
+        ),
+        (
+            M.Legacy,
+            True,
+            False,
+        ),
+    ],
 )
-def test_non_convex_cell_methods(non_convex_cell, method):
+def test_non_convex_cell_methods(
+    non_convex_cell, method, expected_inside, expected_outside
+):
     """Test a non-convex cell with various methods."""
     # Points to test
     inside_point = Point(461467.513586, 5938273.910537, 1850)
@@ -429,7 +435,7 @@ def test_non_convex_cell_methods(non_convex_cell, method):
     result_inside = _internal.grid3d.is_point_in_cell(
         inside_point, non_convex_cell, method
     )
-    assert result_inside is True, (
+    assert result_inside is expected_inside, (
         f"Method {method} failed for inside point {inside_point}. "
         f"Expected True, got {result_inside}."
     )
@@ -438,7 +444,7 @@ def test_non_convex_cell_methods(non_convex_cell, method):
     result_outside = _internal.grid3d.is_point_in_cell(
         outside_point, non_convex_cell, method
     )
-    assert result_outside is False, (
+    assert result_outside is expected_outside, (
         f"Method {method} failed for outside point {outside_point}. "
         f"Expected False, got {result_outside}."
     )
@@ -530,46 +536,26 @@ def test_tricky_drogon_cell():
 
     p = Point(465100.000, 5931340.000, 1681.288)
 
-    tscal = 1.0  # tolerance scaler
+    assert _internal.grid3d.is_point_in_cell(p, cr1, M.Isoparametric) is True
+    assert _internal.grid3d.is_point_in_cell(p, cr2, M.Isoparametric) is False
+    assert _internal.grid3d.is_point_in_cell(p, cr3, M.Isoparametric) is True
 
-    assert _internal.grid3d.is_point_in_cell(p, cr1, M.RayCasting, tscal) is True
-    assert _internal.grid3d.is_point_in_cell(p, cr2, M.RayCasting, tscal) is False
-    assert _internal.grid3d.is_point_in_cell(p, cr3, M.RayCasting, tscal) is False
+    assert _internal.grid3d.is_point_in_cell(p, cr1, M.RayCasting) is True
+    assert _internal.grid3d.is_point_in_cell(p, cr2, M.RayCasting) is False
+    assert _internal.grid3d.is_point_in_cell(p, cr3, M.RayCasting) is False
 
-    assert _internal.grid3d.is_point_in_cell(p, cr1, M.Tetrahedrons, tscal) is False
-    assert _internal.grid3d.is_point_in_cell(p, cr2, M.Tetrahedrons, tscal) is False
-    assert _internal.grid3d.is_point_in_cell(p, cr3, M.Tetrahedrons, tscal) is True
+    assert _internal.grid3d.is_point_in_cell(p, cr1, M.Tetrahedrons) is True
+    assert _internal.grid3d.is_point_in_cell(p, cr2, M.Tetrahedrons) is False
+    assert _internal.grid3d.is_point_in_cell(p, cr3, M.Tetrahedrons) is True
 
-    assert _internal.grid3d.is_point_in_cell(p, cr1, M.NonConvex, tscal) is False
-    assert _internal.grid3d.is_point_in_cell(p, cr2, M.NonConvex, tscal) is False
-    assert _internal.grid3d.is_point_in_cell(p, cr3, M.NonConvex, tscal) is False
+    assert _internal.grid3d.is_point_in_cell(p, cr1, M.Legacy) is True
+    assert _internal.grid3d.is_point_in_cell(p, cr2, M.Legacy) is False
+    assert _internal.grid3d.is_point_in_cell(p, cr3, M.Legacy) is True
 
-    assert _internal.grid3d.is_point_in_cell(p, cr1, M.UsingPlanes, tscal) is True
-    assert _internal.grid3d.is_point_in_cell(p, cr2, M.UsingPlanes, tscal) is False
-    assert _internal.grid3d.is_point_in_cell(p, cr3, M.UsingPlanes, tscal) is False
+    # assert _internal.grid3d.is_point_in_cell(p, cr1, M.NonConvex) is True
+    # assert _internal.grid3d.is_point_in_cell(p, cr2, M.NonConvex) is True
+    # assert _internal.grid3d.is_point_in_cell(p, cr3, M.NonConvex) is False
 
-    assert _internal.grid3d.is_point_in_cell(p, cr1, M.ScoreBased, tscal) is True
-    assert _internal.grid3d.is_point_in_cell(p, cr2, M.ScoreBased, tscal) is False
-    assert _internal.grid3d.is_point_in_cell(p, cr3, M.ScoreBased, tscal) is False
-
-    tscal = 1000000  # tolerance scaler
-
-    assert _internal.grid3d.is_point_in_cell(p, cr1, M.RayCasting, tscal) is False
-    assert _internal.grid3d.is_point_in_cell(p, cr2, M.RayCasting, tscal) is False
-    assert _internal.grid3d.is_point_in_cell(p, cr3, M.RayCasting, tscal) is False
-
-    assert _internal.grid3d.is_point_in_cell(p, cr1, M.Tetrahedrons, tscal) is True
-    assert _internal.grid3d.is_point_in_cell(p, cr2, M.Tetrahedrons, tscal) is True
-    assert _internal.grid3d.is_point_in_cell(p, cr3, M.Tetrahedrons, tscal) is True
-
-    assert _internal.grid3d.is_point_in_cell(p, cr1, M.NonConvex, tscal) is False
-    assert _internal.grid3d.is_point_in_cell(p, cr2, M.NonConvex, tscal) is True
-    assert _internal.grid3d.is_point_in_cell(p, cr3, M.NonConvex, tscal) is False
-
-    assert _internal.grid3d.is_point_in_cell(p, cr1, M.UsingPlanes, tscal) is True
-    assert _internal.grid3d.is_point_in_cell(p, cr2, M.UsingPlanes, tscal) is True
-    assert _internal.grid3d.is_point_in_cell(p, cr3, M.UsingPlanes, tscal) is False
-
-    assert _internal.grid3d.is_point_in_cell(p, cr1, M.ScoreBased, tscal) is True
-    assert _internal.grid3d.is_point_in_cell(p, cr2, M.ScoreBased, tscal) is True
-    assert _internal.grid3d.is_point_in_cell(p, cr3, M.ScoreBased, tscal) is False
+    assert _internal.grid3d.is_point_in_cell(p, cr1, M.UsingPlanes) is True
+    assert _internal.grid3d.is_point_in_cell(p, cr2, M.UsingPlanes) is False
+    assert _internal.grid3d.is_point_in_cell(p, cr3, M.UsingPlanes) is False

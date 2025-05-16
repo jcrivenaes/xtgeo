@@ -1,6 +1,7 @@
 #include <algorithm>  // For std::min and std::max
 #include <array>      // For std::array
 #include <xtgeo/geometry.hpp>
+#include <xtgeo/geometry_basics.hpp>
 #include <xtgeo/grid3d.hpp>
 #include <xtgeo/logging.hpp>
 #include <xtgeo/numerics.hpp>
@@ -8,25 +9,19 @@
 
 namespace xtgeo::geometry {
 
-using grid3d::CellCorners;
+using geometry::matrix::invert_matrix3x3;
+using geometry::matrix::Matrix3x3;
+using geometry::matrix::multiply_matrix_vector;
+using geometry::point::cross_product;
+using geometry::point::dot_product;
+using geometry::point::subtract;
 using xyz::Point;
-/**
- * Calculate the dot product of two vectors.
- */
-static double
-dot_product(const xyz::Point &a, const xyz::Point &b)
-{
-    return a.x * b.x + a.y * b.y + a.z * b.z;
-}
 
 /**
  * Check if a point is inside a triangle in 2D space.
  */
 static bool
-is_point_in_triangle_2d(const xyz::Point &p,
-                        const xyz::Point &a,
-                        const xyz::Point &b,
-                        const xyz::Point &c)
+is_point_in_triangle_2d(const Point &p, const Point &a, const Point &b, const Point &c)
 {
     // Calculate barycentric coordinates in 2D
     double area =
@@ -41,86 +36,57 @@ is_point_in_triangle_2d(const xyz::Point &p,
 }
 
 /**
- * Calculate the normal vector of a plane defined by three points.
- */
-static xyz::Point
-calculate_normal(const xyz::Point &a, const xyz::Point &b, const xyz::Point &c)
-{
-    // Calculate vectors
-    xyz::Point ab = { b.x - a.x, b.y - a.y, b.z - a.z };
-    xyz::Point ac = { c.x - a.x, c.y - a.y, c.z - a.z };
-
-    // Compute the cross product
-    return { ab.y * ac.z - ab.z * ac.y, ab.z * ac.x - ab.x * ac.z,
-             ab.x * ac.y - ab.y * ac.x };
-}
-
-static xyz::Point
-subtract(const xyz::Point &a, const xyz::Point &b)
-{
-    return { a.x - b.x, a.y - b.y, a.z - b.z };
-}
-
-static double
-magnitude_squared(const xyz::Point &v)
-{
-    return v.x * v.x + v.y * v.y + v.z * v.z;
-}
-/**
  * Calculate the bounding box of a tetrahedron defined by four points.
  * Returns a pair of points representing the minimum and maximum corners of the bounding
  * box.
  */
-static std::pair<xyz::Point, xyz::Point>
-get_tetrahedron_bounding_box(const xyz::Point &a,
-                             const xyz::Point &b,
-                             const xyz::Point &c,
-                             const xyz::Point &d)
+static std::pair<Point, Point>
+get_tetrahedron_bounding_box(const Point &a,
+                             const Point &b,
+                             const Point &c,
+                             const Point &d)
 {
     // Initialize min and max points
-    xyz::Point min_pt = { std::min({ a.x, b.x, c.x, d.x }),
-                          std::min({ a.y, b.y, c.y, d.y }),
-                          std::min({ a.z, b.z, c.z, d.z }) };
+    Point min_pt = { std::min({ a.x, b.x, c.x, d.x }), std::min({ a.y, b.y, c.y, d.y }),
+                     std::min({ a.z, b.z, c.z, d.z }) };
 
-    xyz::Point max_pt = { std::max({ a.x, b.x, c.x, d.x }),
-                          std::max({ a.y, b.y, c.y, d.y }),
-                          std::max({ a.z, b.z, c.z, d.z }) };
+    Point max_pt = { std::max({ a.x, b.x, c.x, d.x }), std::max({ a.y, b.y, c.y, d.y }),
+                     std::max({ a.z, b.z, c.z, d.z }) };
 
     return { min_pt, max_pt };
 }
-/**
- * Calculate the signed volume of a tetrahedron.
- * Positive if vertices are in counterclockwise order when viewed from the first vertex.
- */
-static double
-signed_tetrahedron_volume(const xyz::Point &a,
-                          const xyz::Point &b,
-                          const xyz::Point &c,
-                          const xyz::Point &d)
+
+double
+signed_tetrahedron_volume(const Point &a,
+                          const Point &b,
+                          const Point &c,
+                          const Point &d)
 {
-    // Calculate vectors from a to other points
-    xyz::Point ab = { b.x - a.x, b.y - a.y, b.z - a.z };
-    xyz::Point ac = { c.x - a.x, c.y - a.y, c.z - a.z };
-    xyz::Point ad = { d.x - a.x, d.y - a.y, d.z - a.z };
-
-    // Calculate the scalar triple product (ab · (ac × ad)) / 6
-    double cross_x = ac.y * ad.z - ac.z * ad.y;
-    double cross_y = ac.z * ad.x - ac.x * ad.z;
-    double cross_z = ac.x * ad.y - ac.y * ad.x;
-
-    return (ab.x * cross_x + ab.y * cross_y + ab.z * cross_z) / 6.0;
+    Point ab = subtract(b, a);
+    Point ac = subtract(c, a);
+    Point ad = subtract(d, a);
+    return dot_product(cross_product(ab, ac), ad) / 6.0;
 }
 
 static bool
-is_tetrahedron_degenerate(const xyz::Point &a,
-                          const xyz::Point &b,
-                          const xyz::Point &c,
-                          const xyz::Point &d,
-                          double tolerance = 1e-12)
+is_tetrahedron_degenerate(const Point &a,
+                          const Point &b,
+                          const Point &c,
+                          const Point &d,
+                          double tolerance = 1e-6)
 {
+
     double volume = std::abs(signed_tetrahedron_volume(a, b, c, d));
+
     return volume < tolerance;
 }
+
+static bool
+is_tetrahedron_degenerate_from_volume(double volume, double tolerance = 1e-6)
+{
+    return volume < tolerance;
+}
+
 /**
  * Helper function to calculate relative tolerance based on volumes of tetrahedra.
  * Currently inactive, but kept for reference
@@ -138,7 +104,7 @@ calculate_max_volume(const std::array<double, 5> &volumes)
 }
 
 static double
-calculate_bbox_diagonal(const xyz::Point &min_pt, const xyz::Point &max_pt)
+calculate_bbox_diagonal(const Point &min_pt, const Point &max_pt)
 {
     // Calculate the diagonal length of the bounding box
     double diagonal =
@@ -148,187 +114,165 @@ calculate_bbox_diagonal(const xyz::Point &min_pt, const xyz::Point &max_pt)
     return diagonal;
 }
 
-/**
- * Determines if a point is inside a tetrahedron using signed volume method.
- */
 static bool
-is_point_in_tetrahedron_signedsum(const xyz::Point &p,
-                                  const xyz::Point &a,
-                                  const xyz::Point &b,
-                                  const xyz::Point &c,
-                                  const xyz::Point &d,
-                                  const double epsilon)
+is_point_in_tetrahedron_bounding_box(const Point &p,
+                                     const Point &a,
+                                     const Point &b,
+                                     const Point &c,
+                                     const Point &d)
 {
-
-    // Calculate the signed volume of the tetrahedron
-    double v0 = signed_tetrahedron_volume(a, b, c, d);
-
-    // Calculate the signed volumes of the sub-tetrahedra
-    double v1 = signed_tetrahedron_volume(p, b, c, d);
-    double v2 = signed_tetrahedron_volume(a, p, c, d);
-    double v3 = signed_tetrahedron_volume(a, b, p, d);
-    double v4 = signed_tetrahedron_volume(a, b, c, p);
-
-    // Check for degenerate tetrahedron
-    if (std::abs(v0) < epsilon) {
-        // logger.debug("Degenerate tetrahedron detected (v0 = {})", v0);
-
-        // Degenerate tetrahedron: Check if the point lies in the plane of the
-        // tetrahedron
-        xyz::Point normal = calculate_normal(a, b, c);
-        double plane_distance = dot_product(normal, subtract(p, a));
-
-        // If the point is not in the plane, it's outside
-        if (std::abs(plane_distance) > epsilon) {
-            return false;
-        }
-
-        // Perform a 2D point-in-polygon test in the plane
-        return is_point_in_triangle_2d(p, a, b, c) ||
-               is_point_in_triangle_2d(p, a, c, d);
-    }
-
-    // Use consistent signs regardless of coordinate system handedness
-    double sign = v0 > 0 ? 1.0 : -1.0;
-
-    // Point is inside if all sub-volumes have the same sign as the main volume
-    return ((v1 * sign >= -epsilon) && (v2 * sign >= -epsilon) &&
-            (v3 * sign >= -epsilon) && (v4 * sign >= -epsilon));
-}
-
-/**
- * @brief Determines if a point is inside or on the edge of a tetrahedron using
- * barycentric coordinates.
- * @param p The point to check.
- * @param a, b, c, d The vertices of the tetrahedron.
- * @return bool True if the point is inside or on the edge, false otherwise.
- */
-static bool
-is_point_in_tetrahedron_barycentric(const xyz::Point &p,
-                                    const xyz::Point &a,
-                                    const xyz::Point &b,
-                                    const xyz::Point &c,
-                                    const xyz::Point &d,
-                                    const double epsilon)
-{
-    // Helper function to compute the determinant of a 3x3 matrix
-    auto determinant = [](const xyz::Point &u, const xyz::Point &v,
-                          const xyz::Point &w) -> double {
-        return u.x * (v.y * w.z - v.z * w.y) - u.y * (v.x * w.z - v.z * w.x) +
-               u.z * (v.x * w.y - v.y * w.x);
-    };
-    // Compute vectors
-    xyz::Point ap = { p.x - a.x, p.y - a.y, p.z - a.z };
-    xyz::Point ab = { b.x - a.x, b.y - a.y, b.z - a.z };
-    xyz::Point ac = { c.x - a.x, c.y - a.y, c.z - a.z };
-    xyz::Point ad = { d.x - a.x, d.y - a.y, d.z - a.z };
-
-    // Compute the volume of the tetrahedron (main determinant)
-    double det_main = determinant(ab, ac, ad);
-
-    // Compute barycentric coordinates
-    double alpha = determinant(ap, ac, ad) / det_main;  // Weight for vertex a
-    double beta = determinant(ab, ap, ad) / det_main;   // Weight for vertex b
-    double gamma = determinant(ab, ac, ap) / det_main;  // Weight for vertex c
-    double delta = 1.0 - alpha - beta - gamma;          // Weight for vertex d
-
-    // Check if the point is inside or on the edge
-    return (alpha >= -epsilon && beta >= -epsilon && gamma >= -epsilon &&
-            delta >= -epsilon);
-}
-
-/**
- * @brief Determines if a point is inside a tetrahedron using volume sum method.
- *
- * This method checks if a point is inside a tetrahedron by comparing the original
- * tetrahedron volume with the sum of volumes created by replacing each vertex
- * with the test point. If the volumes match, the point is inside.
- *
- * @param point The point to test
- * @param v0,v1,v2,v3 The four vertices of the tetrahedron
- * @param tolerance_scaler A scaling factor for numerical tolerance
- * @return true if point is inside the tetrahedron, false otherwise
- */
-bool
-is_point_in_tetrahedron_volume_sum(const Point &point,
-                                   const Point &v0,
-                                   const Point &v1,
-                                   const Point &v2,
-                                   const Point &v3,
-                                   const double tolerance_scaler)
-{
-    auto &logger = xtgeo::logging::LoggerManager::get("xtgeo.geometry");
-
-    // Calculate original tetrahedron volume
-    double true_vol = std::abs(signed_tetrahedron_volume(v0, v1, v2, v3));
-
-    // If tetrahedron is degenerate, point can't be inside
-    if (true_vol < numerics::TOLERANCE) {
-        return false;
-    }
-
-    // Calculate volumes of the four tetrahedra formed with the point
-    double vol1 = std::abs(signed_tetrahedron_volume(point, v1, v2, v3));
-    double vol2 = std::abs(signed_tetrahedron_volume(v0, point, v2, v3));
-    double vol3 = std::abs(signed_tetrahedron_volume(v0, v1, point, v3));
-    double vol4 = std::abs(signed_tetrahedron_volume(v0, v1, v2, point));
-
-    // Sum of the four volumes
-    double sum_vol = vol1 + vol2 + vol3 + vol4;
-
-    // Calculate relative error tolerance
-    double rel_error = true_vol * 0.001 * tolerance_scaler;
-    double diff = sum_vol - true_vol;
-
-    // If sum is less than original (accounting for floating point error),
-    // something is wrong with our calculation
-    if (diff < -rel_error) {
-        logger.warning(
-          "Negative volume difference detected in tetrahedron point test: {} < -{}",
-          diff, rel_error);
-        return false;
-    }
-
-    // If volumes match within tolerance, point is inside
-    return std::abs(diff) <= rel_error;
-}
-
-bool
-is_point_in_tetrahedron(const xyz::Point &point,
-                        const xyz::Point &a,
-                        const xyz::Point &b,
-                        const xyz::Point &c,
-                        const xyz::Point &d,
-                        const double tolerance_scaler)
-{
-
+    // Get the bounding box of the tetrahedron
     auto [min_pt, max_pt] = get_tetrahedron_bounding_box(a, b, c, d);
 
-    // Quick rejection test using bounding box
-    if (point.x < min_pt.x || point.x > max_pt.x || point.y < min_pt.y ||
-        point.y > max_pt.y || point.z < min_pt.z || point.z > max_pt.z) {
+    // Check if the point is within the bounding box
+    return (p.x >= min_pt.x && p.x <= max_pt.x && p.y >= min_pt.y && p.y <= max_pt.y &&
+            p.z >= min_pt.z && p.z <= max_pt.z);
+}
+
+static bool
+is_point_in_tetrahedron_bounding_box_using_minmax_pt(const Point &p,
+                                                     const Point &min_pt,
+                                                     const Point &max_pt)
+{
+    // Check if the point is within the bounding box
+    return (p.x >= min_pt.x && p.x <= max_pt.x && p.y >= min_pt.y && p.y <= max_pt.y &&
+            p.z >= min_pt.z && p.z <= max_pt.z);
+}
+
+// Determines if a point is inside or on the boundary of a tetrahedron
+// using barycentric coordinates.
+// Returns:
+//  0 if outside
+//  1 if inside
+//  2 if on boundary
+// -1 if tetrahedron is degenerate
+int
+is_point_in_tetrahedron(const Point &p,
+                        const Point &v0,
+                        const Point &v1,
+                        const Point &v2,
+                        const Point &v3)
+{
+
+    // Check if the point is within the bounding box of the tetrahedron
+    auto [min_pt, max_pt] = get_tetrahedron_bounding_box(v0, v1, v2, v3);
+
+    if (!is_point_in_tetrahedron_bounding_box_using_minmax_pt(p, min_pt, max_pt)) {
+        return 0;  // Outside
+    }
+
+    double d = calculate_bbox_diagonal(min_pt, max_pt);
+    double epsilon = 1e-6 * d;
+
+    // Calculate vectors from v0
+    Point v0v1 = subtract(v1, v0);
+    Point v0v2 = subtract(v2, v0);
+    Point v0v3 = subtract(v3, v0);
+    Point v0p = subtract(p, v0);
+
+    // Matrix M = [v0v1 | v0v2 | v0v3]
+    Matrix3x3 M = { { { v0v1.x, v0v2.x, v0v3.x },
+                      { v0v1.y, v0v2.y, v0v3.y },
+                      { v0v1.z, v0v2.z, v0v3.z } } };
+
+    Matrix3x3 inv_M;
+    if (!invert_matrix3x3(M, inv_M)) {
+        return -1;  // Degenerate tetrahedron (zero volume)
+    }
+
+    // Solve M * [b1, b2, b3]^T = v0p for barycentric coordinates b1, b2, b3
+    Point bary_coords_123 = multiply_matrix_vector(inv_M, v0p);
+    double b1 = bary_coords_123.x;
+    double b2 = bary_coords_123.y;
+    double b3 = bary_coords_123.z;
+    double b0 = 1.0 - b1 - b2 - b3;
+
+    std::array<double, 4> b_coords = { b0, b1, b2, b3 };
+
+    bool all_non_negative = true;
+    bool any_zero = false;
+    bool all_positive_and_sum_to_one = true;
+
+    double sum_coords = 0;
+    for (double coord : b_coords) {
+        sum_coords += coord;
+        if (coord < -epsilon) {  // Allow for small negative due to precision
+            all_non_negative = false;
+            all_positive_and_sum_to_one = false;
+            break;
+        }
+        if (coord < epsilon) {  // Effectively zero or very small positive
+            any_zero = true;
+        }
+        if (coord <= epsilon) {  // Not strictly positive
+            all_positive_and_sum_to_one = false;
+        }
+    }
+    if (std::abs(sum_coords - 1.0) > epsilon * 4) {  // Sum should be 1
+        all_positive_and_sum_to_one = false;
+        all_non_negative = false;  // If sum is not 1, it's problematic
+    }
+
+    if (all_non_negative) {  // All coords are >= 0 (within EPSILON)
+        if (any_zero) {
+            return 2;  // On boundary (at least one coord is approx zero)
+        } else if (all_positive_and_sum_to_one) {  // All coords are > EPSILON and sum
+                                                   // is 1
+            return 1;                              // Strictly inside
+        } else {  // All non-negative, sum is 1, but some might be very close to zero
+                  // (handled by any_zero) This case implies it's on boundary or inside.
+                  // If not strictly inside, it's on boundary.
+            return 2;  // On boundary or very close
+        }
+    }
+
+    return 0;  // Outside
+}
+
+/**
+ * @brief This function mimics the former x_point_in_tetrahedron in the old C base
+ */
+bool
+is_point_in_tetrahedron_legacy(const Point &p,
+                               const Point &a,
+                               const Point &b,
+                               const Point &c,
+                               const Point &d)
+{
+    // Check if the point is within the bounding box of the tetrahedron
+    if (!is_point_in_tetrahedron_bounding_box(p, a, b, c, d)) {
+        return false;  // Outside
+    }
+
+    // Calculate the absolute volume of the tetrahedron
+    double true_vol = std::abs(signed_tetrahedron_volume(a, b, c, d));
+    double const FLOATEPS = 1e-5;
+
+    if (is_tetrahedron_degenerate_from_volume(true_vol, FLOATEPS)) {
+        // Degenerate tetrahedron, assume point is not inside
         return false;
     }
 
-    // Calculate the diagonal length of the bounding box
-    double diagonal = calculate_bbox_diagonal(min_pt, max_pt);
+    // Calculate the absolute volumes of the sub-tetrahedra
+    double v1 = std::abs(signed_tetrahedron_volume(p, b, c, d));
+    double v2 = std::abs(signed_tetrahedron_volume(a, p, c, d));
+    double v3 = std::abs(signed_tetrahedron_volume(a, b, p, d));
+    double v4 = std::abs(signed_tetrahedron_volume(a, b, c, p));
 
-    // Calculate the practical epsilon based on the diagonal length, multiplied with a
-    // practical factor of 1e6 (since numerics::EPSILON is very small, i.e. ~1e-16)
-    double epsilon = numerics::EPSILON * tolerance_scaler * diagonal * 1e6;
+    double sumvol = v1 + v2 + v3 + v4;
+    double rel_error = true_vol * 0.001;
+    double diff = sumvol - true_vol;
 
-    // If diagonal is zero (degenerate tetrahedron), handle appropriately
-    if (diagonal < epsilon) {
-        // All vertices are coincident. Point is inside only if it matches the vertex.
-        return magnitude_squared(subtract(point, a)) < epsilon;
+    if (diff < -rel_error) {
+        throw std::runtime_error(
+          "Impossible... sumvol < true_vol. Check the input points.");
     }
 
-    return is_point_in_tetrahedron_volume_sum(point, a, b, c, d, tolerance_scaler);
-
-    // if (is_tetrahedron_degenerate(a, b, c, d)) {
-    //     return is_point_in_tetrahedron_signedsum(point, a, b, c, d, epsilon);
-    // } else {
-    //     return is_point_in_tetrahedron_barycentric(point, a, b, c, d, epsilon);
-    // }
+    // Check if the point is inside the tetrahedron
+    if (diff > rel_error) {
+        return false;
+    }
+    return true;
 }
+
 }  // namespace xtgeo::geometry

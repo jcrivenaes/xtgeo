@@ -14,6 +14,8 @@ namespace py = pybind11;
 
 namespace xtgeo::grid3d {
 
+auto METHOD = geometry::PointInHexahedronMethod::Optimized;
+
 /**
  * @brief Estimate the i,j range for a point based on top/base surfaces
  */
@@ -26,6 +28,8 @@ estimate_ij_range(const xyz::Point &point,
                   const int ncol,
                   const int nrow)
 {
+
+    auto &logger = xtgeo::logging::LoggerManager::get("estimate_ij_range");
     constexpr int buffer = 1;
 
     double i_top = regsurf::get_z_from_xy(top_i, point.x, point.y);
@@ -36,12 +40,14 @@ estimate_ij_range(const xyz::Point &point,
     // If all values are NaN, the point is outside the grid
     if (std::isnan(i_top) && std::isnan(j_top) && std::isnan(i_base) &&
         std::isnan(j_base)) {
+        logger.debug("All values are NaN, point is outside the grid");
         return std::make_tuple(-1, -1, -1, -1);
     }
 
     // If any value is NaN, search the entire grid
     if (std::isnan(i_top) || std::isnan(j_top) || std::isnan(i_base) ||
         std::isnan(j_base)) {
+        logger.debug("One or more values are NaN, searching entire grid");
         return std::make_tuple(0, ncol - 1, 0, nrow - 1);
     }
 
@@ -51,6 +57,8 @@ estimate_ij_range(const xyz::Point &point,
     int jmin = std::max(0, static_cast<int>(std::floor(j_top)) - buffer);
     int jmax = std::min(nrow - 1, static_cast<int>(std::ceil(j_base)) + buffer);
 
+    logger.debug("Estimated range: i_min={}, i_max={}, j_min={}, j_max={}", imin, imax,
+                 jmin, jmax);
     return std::make_tuple(imin, imax, jmin, jmax);
 }
 
@@ -65,15 +73,18 @@ get_proposed_ij(const Grid &one_grid,
                 int j_min,
                 int j_max)
 {
+    auto &logger = xtgeo::logging::LoggerManager::get("get_proposed_ij");
     for (int i = i_min; i <= i_max; ++i) {
         for (int j = j_min; j <= j_max; ++j) {
             auto cell_corners = get_cell_corners_from_ijk(one_grid, i, j, 0);
-            if (is_point_in_cell(point, cell_corners)) {
+            if (is_point_in_cell(point, cell_corners, METHOD)) {
+                logger.debug("Found proposed I J point in cell (i={}, j={})", i, j);
                 return std::make_tuple(i, j);
             }
         }
     }
 
+    logger.debug("Found NOT a proposed I J point");
     return std::make_tuple(-1, -1);  // No match found
 }
 
@@ -107,18 +118,21 @@ find_in_column(const Grid &grid,
                const bool active_only,
                const py::detail::unchecked_reference<int, 3> &actnumsv)
 {
+    auto &logger = xtgeo::logging::LoggerManager::get("find_in_column");
     // Make sure previous_k is within bounds
     previous_k = std::clamp(previous_k, 0, static_cast<int>(grid.nlay - 1));
 
+    logger.debug("Searching in column (i={}, j={}, k={})", i, j, previous_k);
     // Search outward from previous_k in both directions
     for (int offset = 0; offset < grid.nlay; ++offset) {
         // Try upward
         int k_up = previous_k - offset;
+        logger.debug("Search up... k_up={}", k_up);
         if (k_up >= 0 && k_up < grid.nlay) {
             // Only check if cell is active (when required)
             if (!active_only || (active_only && actnumsv(i, j, k_up) > 0)) {
                 auto cell_corners = get_cell_corners_from_ijk(grid, i, j, k_up);
-                if (is_point_in_cell(point, cell_corners)) {
+                if (is_point_in_cell(point, cell_corners, METHOD)) {
                     found_i = i;
                     found_j = j;
                     found_k = k_up;
@@ -130,10 +144,11 @@ find_in_column(const Grid &grid,
 
         // Try downward (skip if same as upward)
         int k_down = previous_k + offset;
+        logger.debug("Search down... k_down={}", k_down);
         if (k_down >= 0 && k_down < grid.nlay && k_down != k_up) {
             if (!active_only || (active_only && actnumsv(i, j, k_down) > 0)) {
                 auto cell_corners = get_cell_corners_from_ijk(grid, i, j, k_down);
-                if (is_point_in_cell(point, cell_corners)) {
+                if (is_point_in_cell(point, cell_corners, METHOD)) {
                     found_i = i;
                     found_j = j;
                     found_k = k_down;
@@ -161,7 +176,7 @@ get_indices_from_pointset(const Grid &grid,
                           const regsurf::RegularSurface &base_j,
                           const bool active_only)
 {
-    auto &logger = xtgeo::logging::LoggerManager::get("xtgeo.grid3d");
+    auto &logger = xtgeo::logging::LoggerManager::get("get_indices_from_pointset");
     logger.debug("Finding grid indices for points in a polygon or pointset");
 
     // Get the number of points
@@ -192,8 +207,14 @@ get_indices_from_pointset(const Grid &grid,
     for (size_t idx = 0; idx < num_points; ++idx) {
         const auto &point = points.get_point(idx);
 
+        logger.debug("==========================================================");
+        logger.debug("Processing point {}: ({}, {}, {})", idx, point.x, point.y,
+                     point.z);
+        logger.debug("==========================================================");
+
         // Skip points outside grid bounds
         if (!is_point_in_grid_bounds(point, min_point, max_point)) {
+            logger.debug("!!!!!!!!!!!!!!! Point {} is outside grid bounds", idx);
             continue;
         }
 
@@ -218,6 +239,9 @@ get_indices_from_pointset(const Grid &grid,
             jmin = jmax = j_est;
         }
 
+        logger.debug("Proposed columns: imin={}, imax={} -- jmin={}, jmax={}", imin,
+                     imax, jmin, jmax);
+
         // Search for the point in the possible cell columns
         bool found = false;
         for (int i = imin; i <= imax && !found; ++i) {
@@ -226,6 +250,13 @@ get_indices_from_pointset(const Grid &grid,
                                        j_indices_(idx), k_indices_(idx), active_only,
                                        actnumsv_);
             }
+        }
+
+        if (found) {
+            logger.debug("Found point {} in cell (i={}, j={}, k={})", idx,
+                         i_indices_(idx), j_indices_(idx), k_indices_(idx));
+        } else {
+            logger.debug("Point {} not found in any cell", idx);
         }
 
         // Reset previous_k if no cell found

@@ -57,7 +57,7 @@ def hcorners_thin():
     )
 
 
-def test_hexahedron_volume():
+def test_geom_hexahedron_volume():
     """Test the hexahedron volume function, which returns a double from C++."""
     # Create a simple grid
     grid = xtgeo.create_box_grid((3, 4, 5))
@@ -66,7 +66,7 @@ def test_hexahedron_volume():
     corners = _internal.grid3d.Grid(grid).get_cell_corners_from_ijk(0, 0, 0)
 
     for prec in range(1, 5):
-        volume = _internal.geometry.hexahedron_volume(corners, prec)
+        volume = _internal.geometry.hexahedron_volume(corners)
         assert volume == pytest.approx(1.0)
 
 
@@ -79,15 +79,21 @@ def test_hexahedron_volume_banal6_cell(testdata_path):
     corners = _internal.grid3d.Grid(grid).get_cell_corners_from_ijk(1, 0, 1)
 
     for prec in range(1, 5):
-        volume = _internal.geometry.hexahedron_volume(corners, prec)
+        volume = _internal.geometry.hexahedron_volume_legacy(corners, prec)
         assert volume == pytest.approx(1093.75, rel=1e-3)  # 1093.75 is RMS' value
+
+    volume = _internal.geometry.hexahedron_volume(corners)
+    assert volume == pytest.approx(1093.75, rel=1e-3)  # 1093.75 is RMS' value
 
     # Get the corners of a another skew cell (4,1,2)
     corners = _internal.grid3d.Grid(grid).get_cell_corners_from_ijk(3, 0, 1)
 
     for prec in range(1, 5):
-        volume = _internal.geometry.hexahedron_volume(corners, prec)
+        volume = _internal.geometry.hexahedron_volume_legacy(corners, prec)
         assert volume == pytest.approx(468.75, rel=1e-3)  # 468.75 is RMS' value
+
+    volume = _internal.geometry.hexahedron_volume(corners)
+    assert volume == pytest.approx(468.75, rel=1e-3)  # 468.75 is RMS' value
 
     # some work on the corners
     corners_np = corners.to_numpy()
@@ -144,7 +150,7 @@ def test_hexahedron_volume_with_randomized_corners(
     cell_corners = _internal.grid3d.CellCorners(*[Point(*corner) for corner in corners])
 
     # Calculate the volume
-    volume = _internal.geometry.hexahedron_volume(cell_corners, 3)
+    volume = _internal.geometry.hexahedron_volume(cell_corners)
 
     # Assert that the volume is non-negative
     assert volume >= 0, f"Volume should be non-negative, got {volume}"

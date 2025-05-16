@@ -44,8 +44,7 @@ bool
 is_point_in_cell(const xyz::Point &point,
                  const CellCorners &corners,
                  geometry::PointInHexahedronMethod method =
-                   geometry::PointInHexahedronMethod::ScoreBased,
-                 const double tolerance_scaler = 1.0);
+                   geometry::PointInHexahedronMethod::Optimized);
 
 double
 get_depth_in_cell(const double x,
@@ -64,9 +63,7 @@ is_cell_distorted(const CellCorners &corners);
 // =====================================================================================
 
 py::array_t<double>
-get_cell_volumes(const Grid &grid_cpp,
-                 const int precision,
-                 const bool asmasked = false);
+get_cell_volumes(const Grid &grid_cpp, const bool asmasked = false);
 
 std::tuple<py::array_t<double>, py::array_t<double>, py::array_t<double>>
 get_cell_centers(const Grid &grid_cpp, const bool asmasked = false);
@@ -136,7 +133,7 @@ init(py::module &m)
       .def_readonly("actnumsv", &Grid::actnumsv)
 
       .def("get_cell_volumes", &get_cell_volumes, "Compute the bulk volume of cell.",
-           py::arg("precision"), py::arg("asmasked") = false)
+           py::arg("asmasked") = false)
 
       .def("get_cell_centers", &get_cell_centers,
            "Compute the cells centers coordinates as 3 arrays")
@@ -191,11 +188,10 @@ init(py::module &m)
     m_grid3d.def("is_point_in_cell", &is_point_in_cell,
                  "Determine if a point XYZ is inside a cell, in 3D", py::arg("point"),
                  py::arg("corners"),
-                 py::arg("method") = geometry::PointInHexahedronMethod::ScoreBased,
-                 py::arg("tolerance_scaler") = 1.0);
+                 py::arg("method") = geometry::PointInHexahedronMethod::Optimized);
     m_grid3d.def("get_depth_in_cell", &get_depth_in_cell,
                  "Determine the interpolated cell face Z from XY, top or base.");
-    m_grid3d.def("process_edges_rmsapi", &process_edges_rmsapi, "Edge prosessing...");
+    m_grid3d.def("process_edges_rmsapi", &process_edges_rmsapi, "Edge processing...");
     m_grid3d.def("create_grid_from_cube", &create_grid_from_cube,
                  "Create a 3D grid from a cube specification.", py::arg("cube"),
                  py::arg("use_cell_center") = false, py::arg("flip") = 1);

@@ -1862,9 +1862,7 @@ class Grid(_Grid3D):
             asmasked (bool). If True, make a np.ma array where inactive cells
                 are masked. Otherwise a numpy array will all bulk for all cells is
                 returned
-            precision (int): An number indication precision level, where
-                a higher number means increased precision but also increased computing
-                time. Currently 1, 2 (default), 4 are supported.
+            precision (int): Not applied!
 
         Returns:
             XTGeo GridProperty object
@@ -1872,9 +1870,7 @@ class Grid(_Grid3D):
         .. versionadded:: 2.13 (as experimental)
 
         """
-        return _grid_etc1.get_bulk_volume(
-            self, name=name, asmasked=asmasked, precision=precision
-        )
+        return _grid_etc1.get_bulk_volume(self, name=name, asmasked=asmasked)
 
     def get_heights_above_ffl(
         self,

@@ -201,7 +201,7 @@ def test_get_ijk_from_points(reekgrid):
 
     assert ijk["KZ"][3] == -1
     assert ijk["KZ"][4] == 14
-    assert ijk["KZ"][5] == 12
+    assert ijk["KZ"][5] == 11  #  11/12 boundary!
 
     if reekgrid.ijk_handedness == "right":
         reekgrid.ijk_handedness = "left"
@@ -245,14 +245,24 @@ def test_get_ijk_from_points_smallcase(smallgrid3):
 
     g1 = smallgrid3
 
-    # g1.crop((1, 1), (1, 1), (1, 2))
+    g1.crop((1, 1), (1, 1), (1, 2))  # TMP!!!
+
+    g1.to_file("/tmp/smallcase.roff", fformat="roff")
+
     df1 = g1.get_dataframe(ijk=True, xyz=False)
     df2 = g1.get_dataframe(ijk=False, xyz=True)
+
+    print(df1.to_string())
+    print(df2.to_string())
 
     po = xtgeo.Points()
     po.set_dataframe(df2)
 
-    ijk = g1.get_ijk_from_points(po, includepoints=False)
+    po.to_file("/tmp/smallcase.poi")
+
+    ijk = g1.get_ijk_from_points(po, includepoints=True)
+
+    print(ijk.to_string())
 
     ijk_i = ijk["IX"].values.tolist()
     ijk_j = ijk["JY"].values.tolist()

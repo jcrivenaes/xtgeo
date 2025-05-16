@@ -55,6 +55,12 @@ def test_points_inside_small_grid(small_grid):
 
     points_cpp = _internal.xyz.PointSet(arr)
 
+    cache.top_i_index.to_file("/tmp/top_i_index.gri")
+    cache.top_j_index.to_file("/tmp/top_j_index.gri")
+    cache.base_i_index.to_file("/tmp/base_i_index.gri")
+    cache.base_j_index.to_file("/tmp/base_j_index.gri")
+    cache.onegrid.to_file("/tmp/onegrid.roff")
+
     iarr, jarr, karr = grid_cpp.get_indices_from_pointset(
         points_cpp,
         cache.onegrid_cpp,

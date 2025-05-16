@@ -24,7 +24,7 @@ namespace xtgeo::grid3d {
  * @return An array containing the volume of every cell
  */
 py::array_t<double>
-get_cell_volumes(const Grid &grd, const int precision, const bool asmasked)
+get_cell_volumes(const Grid &grd, const bool asmasked)
 {
     pybind11::array_t<double> cellvols({ grd.ncol, grd.nrow, grd.nlay });
     auto cellvols_ = cellvols.mutable_data();
@@ -39,7 +39,7 @@ get_cell_volumes(const Grid &grd, const int precision, const bool asmasked)
                     continue;
                 }
                 auto crn = grid3d::get_cell_corners_from_ijk(grd, i, j, k);
-                cellvols_[idx] = geometry::hexahedron_volume(crn, precision);
+                cellvols_[idx] = geometry::hexahedron_volume(crn);
             }
         }
     }

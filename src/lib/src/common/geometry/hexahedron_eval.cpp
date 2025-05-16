@@ -1,6 +1,7 @@
 #include <limits>   // Required for std::numeric_limits
 #include <numeric>  // Required for std::accumulate
 #include <xtgeo/geometry.hpp>
+#include <xtgeo/geometry_basics.hpp>
 #include <xtgeo/grid3d.hpp>
 #include <xtgeo/logging.hpp>
 #include <xtgeo/numerics.hpp>
@@ -8,42 +9,15 @@
 
 namespace xtgeo::geometry {
 
-using grid3d::CellCorners;
+using xyz::Point;
 
-// Helper function to calculate the cross product
-inline xyz::Point
-cross_product(const xyz::Point &a, const xyz::Point &b)
-{
-    return { a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x };
-}
-
-// Helper function to calculate the dot product
-inline double
-dot_product(const xyz::Point &a, const xyz::Point &b)
-{
-    return a.x * b.x + a.y * b.y + a.z * b.z;
-}
-
-// Helper function for vector subtraction
-inline xyz::Point
-subtract(const xyz::Point &a, const xyz::Point &b)
-{
-    return { a.x - b.x, a.y - b.y, a.z - b.z };
-}
-
-// Helper function for vector addition
-inline xyz::Point
-add(const xyz::Point &a, const xyz::Point &b)
-{
-    return { a.x + b.x, a.y + b.y, a.z + b.z };
-}
-
-// Helper function for scalar multiplication
-inline xyz::Point
-scale(const xyz::Point &a, double s)
-{
-    return { a.x * s, a.y * s, a.z * s };
-}
+using geometry::point::add;
+using geometry::point::cross_product;
+using geometry::point::dot_product;
+using geometry::point::magnitude;
+using geometry::point::magnitude_squared;
+using geometry::point::scale;
+using geometry::point::subtract;
 
 /**
  * @brief Faster test for convexity of a hexahedron involving point-plane
@@ -55,10 +29,10 @@ static bool
 is_hexahedron_non_convex_test1(const HexahedronCorners &corners)
 {
     // Create an array of vertices for easier access
-    std::array<xyz::Point, 8> vertices = { corners.upper_sw, corners.upper_se,
-                                           corners.upper_ne, corners.upper_nw,
-                                           corners.lower_sw, corners.lower_se,
-                                           corners.lower_ne, corners.lower_nw };
+    std::array<Point, 8> vertices = { corners.upper_sw, corners.upper_se,
+                                      corners.upper_ne, corners.upper_nw,
+                                      corners.lower_sw, corners.lower_se,
+                                      corners.lower_ne, corners.lower_nw };
 
     // Define faces with consistent outward-pointing normal winding order
     const std::array<std::array<int, 4>, 6> faces = { {
@@ -74,14 +48,14 @@ is_hexahedron_non_convex_test1(const HexahedronCorners &corners)
 
     // Iterate over each face
     for (const auto &face : faces) {
-        const xyz::Point &p0 = vertices[face[0]];
-        const xyz::Point &p1 = vertices[face[1]];
-        const xyz::Point &p2 = vertices[face[2]];
+        const Point &p0 = vertices[face[0]];
+        const Point &p1 = vertices[face[1]];
+        const Point &p2 = vertices[face[2]];
 
         // Calculate the normal of the face using the cross product
-        xyz::Point edge1 = subtract(p1, p0);
-        xyz::Point edge2 = subtract(p2, p0);
-        xyz::Point normal = cross_product(edge1, edge2);
+        Point edge1 = subtract(p1, p0);
+        Point edge2 = subtract(p2, p0);
+        Point normal = cross_product(edge1, edge2);
 
         // Check the sign of the dot product for all other vertices
         double reference_sign = 0.0;
@@ -92,7 +66,7 @@ is_hexahedron_non_convex_test1(const HexahedronCorners &corners)
             }
 
             // Calculate the vector from the face to the vertex
-            xyz::Point vec = subtract(vertices[i], p0);
+            Point vec = subtract(vertices[i], p0);
 
             // Calculate the dot product with the face normal
             double dot = dot_product(vec, normal);
@@ -128,10 +102,10 @@ static bool
 is_hexahedron_non_convex_test2(const HexahedronCorners &corners)
 {
     // Create more accessible array of vertices
-    std::array<xyz::Point, 8> vertices = { corners.upper_sw, corners.upper_se,
-                                           corners.upper_ne, corners.upper_nw,
-                                           corners.lower_sw, corners.lower_se,
-                                           corners.lower_ne, corners.lower_nw };
+    std::array<Point, 8> vertices = { corners.upper_sw, corners.upper_se,
+                                      corners.upper_ne, corners.upper_nw,
+                                      corners.lower_sw, corners.lower_se,
+                                      corners.lower_ne, corners.lower_nw };
 
     // Define faces with consistent outward-pointing normal winding order (assuming
     // standard node numbering) (e.g., using the right-hand rule)
@@ -150,14 +124,14 @@ is_hexahedron_non_convex_test2(const HexahedronCorners &corners)
 
     // 1. Check if any face is non-planar using scalar triple product
     for (const auto &face : faces) {
-        const xyz::Point &a = vertices[face[0]];
-        const xyz::Point &b = vertices[face[1]];
-        const xyz::Point &c = vertices[face[2]];
-        const xyz::Point &d = vertices[face[3]];
+        const Point &a = vertices[face[0]];
+        const Point &b = vertices[face[1]];
+        const Point &c = vertices[face[2]];
+        const Point &d = vertices[face[3]];
 
-        xyz::Point ab = subtract(b, a);
-        xyz::Point ac = subtract(c, a);
-        xyz::Point ad = subtract(d, a);
+        Point ab = subtract(b, a);
+        Point ac = subtract(c, a);
+        Point ad = subtract(d, a);
 
         // Volume of tetrahedron formed by A, B, C, D
         double volume = dot_product(ab, cross_product(ac, ad));
@@ -175,23 +149,23 @@ is_hexahedron_non_convex_test2(const HexahedronCorners &corners)
 
     // 2. Check if the centroid lies on the inner side of all face planes
     // Calculate centroid
-    xyz::Point centroid = { 0.0, 0.0, 0.0 };
+    Point centroid = { 0.0, 0.0, 0.0 };
     for (const auto &v : vertices) {
         centroid = add(centroid, v);
     }
     centroid = scale(centroid, 1.0 / 8.0);
 
     for (const auto &face : faces) {
-        const xyz::Point &p0 = vertices[face[0]];
-        const xyz::Point &p1 = vertices[face[1]];
+        const Point &p0 = vertices[face[0]];
+        const Point &p1 = vertices[face[1]];
         // Use p3 for normal calculation based on winding order {0, 1, 2, 3} -> (p1-p0)
         // x (p3-p0)
-        const xyz::Point &p3 = vertices[face[3]];
+        const Point &p3 = vertices[face[3]];
 
         // Calculate face normal (consistent winding order assumed in `faces` array)
-        xyz::Point v1 = subtract(p1, p0);
-        xyz::Point v2 = subtract(p3, p0);
-        xyz::Point normal = cross_product(v1, v2);
+        Point v1 = subtract(p1, p0);
+        Point v2 = subtract(p3, p0);
+        Point normal = cross_product(v1, v2);
 
         // Check if the centroid is on the correct side of the plane defined by p0 and
         // normal (p - p0) . N <= 0 means p is on the side opposite to N direction (or
@@ -230,7 +204,7 @@ is_hexahedron_non_convex(const HexahedronCorners &corners)
 
 /*
  * Get the minimum and maximum values of the corners of a hexahedron.
- * @param CellCorners struct
+ * @param HexahedronCorners struct
  * @return std::vector<double>
  */
 std::vector<double>
@@ -244,11 +218,10 @@ get_hexahedron_minmax(const HexahedronCorners &cell_corners)
     double zmax = std::numeric_limits<double>::min();
 
     // List of all corners
-    std::array<xyz::Point, 8> corners = {
-        cell_corners.upper_sw, cell_corners.upper_se, cell_corners.upper_ne,
-        cell_corners.upper_nw, cell_corners.lower_sw, cell_corners.lower_se,
-        cell_corners.lower_ne, cell_corners.lower_nw
-    };
+    std::array<Point, 8> corners = { cell_corners.upper_sw, cell_corners.upper_se,
+                                     cell_corners.upper_ne, cell_corners.upper_nw,
+                                     cell_corners.lower_sw, cell_corners.lower_se,
+                                     cell_corners.lower_ne, cell_corners.lower_nw };
 
     // Iterate over all corners to find min/max values
     for (const auto &corner : corners) {
@@ -273,17 +246,18 @@ bool
 is_hexahedron_severely_distorted(const xtgeo::geometry::HexahedronCorners &corners)
 {
     // Thresholds for distortion checks
-    constexpr double MIN_VOLUME_THRESHOLD = 1e-6;
+    constexpr double ASPECT_RATIO_THRESHOLD = 200.0;  // since res. cells often are thin
+    constexpr double MIN_VOLUME_THRESHOLD = 1e-8;
     constexpr double PLANARITY_TOLERANCE = 12.0;
-    constexpr double ASPECT_RATIO_THRESHOLD = 100.0;
     constexpr double DIHEDRAL_ANGLE_TOLERANCE = 30.0;  // In degrees
 
     // Helper function to calculate the length of an edge
-    auto edge_length = [](const xyz::Point &p1, const xyz::Point &p2) {
+    auto edge_length = [](const Point &p1, const Point &p2) {
         return std::sqrt(std::pow(p2.x - p1.x, 2) + std::pow(p2.y - p1.y, 2) +
                          std::pow(p2.z - p1.z, 2));
     };
 
+    // ---------------------------------------------------------------------------------
     // Check aspect ratios
     std::array<double, 12> edge_lengths = {
         edge_length(corners.upper_sw, corners.upper_se),
@@ -307,40 +281,35 @@ is_hexahedron_severely_distorted(const xtgeo::geometry::HexahedronCorners &corne
         return true;  // Severely distorted due to zero or negative edge length
     }
     if (max_edge / min_edge > ASPECT_RATIO_THRESHOLD) {
-        printf("Aspect ratio: %f\n", max_edge / min_edge);
         return true;  // Severely distorted due to aspect ratio
     }
 
+    // ---------------------------------------------------------------------------------
     // Check face planarity
-    auto check_face_planarity = [](const std::array<xyz::Point, 4> &face) {
-        auto edge1 = xyz::Point(face[1].x - face[0].x, face[1].y - face[0].y,
-                                face[1].z - face[0].z);
-        auto edge2 = xyz::Point(face[2].x - face[0].x, face[2].y - face[0].y,
-                                face[2].z - face[0].z);
-        auto normal = xyz::Point(edge1.y * edge2.z - edge1.z * edge2.y,
-                                 edge1.z * edge2.x - edge1.x * edge2.z,
-                                 edge1.x * edge2.y - edge1.y * edge2.x);
-        double magnitude =
-          std::sqrt(normal.x * normal.x + normal.y * normal.y + normal.z * normal.z);
-        if (magnitude <= 1e-9) {
+    double planarity_tol = PLANARITY_TOLERANCE * max_edge;
+
+    auto check_face_planarity = [planarity_tol](const std::array<Point, 4> &face) {
+        auto edge1 = subtract(face[1], face[0]);
+        auto edge2 = subtract(face[2], face[0]);
+        auto normal = cross_product(edge1, edge2);
+        double mag = magnitude(normal);
+        if (mag <= 1e-9) {
             return false;
         }
-        normal.x /= magnitude;
-        normal.y /= magnitude;
-        normal.z /= magnitude;
+        normal.x /= mag;
+        normal.y /= mag;
+        normal.z /= mag;
 
         for (const auto &point : face) {
-            auto vec =
-              xyz::Point(point.x - face[0].x, point.y - face[0].y, point.z - face[0].z);
-            double dot_product = vec.x * normal.x + vec.y * normal.y + vec.z * normal.z;
-            if (std::abs(dot_product) > PLANARITY_TOLERANCE) {
-                return false;  // Face is not planar
+            auto vec = subtract(point, face[0]);
+            if (std::abs(dot_product(vec, normal)) > planarity_tol) {
+                return false;  // Face is not sufficiently planar
             }
         }
         return true;
     };
 
-    std::array<std::array<xyz::Point, 4>, 6> faces = { {
+    std::array<std::array<Point, 4>, 6> faces = { {
       { corners.upper_sw, corners.upper_se, corners.upper_ne, corners.upper_nw },
       { corners.lower_sw, corners.lower_se, corners.lower_ne, corners.lower_nw },
       { corners.upper_sw, corners.upper_se, corners.lower_se, corners.lower_sw },
@@ -351,41 +320,64 @@ is_hexahedron_severely_distorted(const xtgeo::geometry::HexahedronCorners &corne
 
     for (const auto &face : faces) {
         if (!check_face_planarity(face)) {
-            printf("Face planarity check failed\n");
             return true;  // Severely distorted due to non-planar face
         }
     }
 
-    // Check dihedral angles
-    auto calculate_angle = [](const xyz::Point &normal1, const xyz::Point &normal2) {
-        double dot =
-          normal1.x * normal2.x + normal1.y * normal2.y + normal1.z * normal2.z;
-        double magnitude1 = std::sqrt(normal1.x * normal1.x + normal1.y * normal1.y +
-                                      normal1.z * normal1.z);
-        double magnitude2 = std::sqrt(normal2.x * normal2.x + normal2.y * normal2.y +
-                                      normal2.z * normal2.z);
-        return std::acos(dot / (magnitude1 * magnitude2)) * 180.0 /
-               M_PI;  // Convert to degrees
+    // ---------------------------------------------------------------------------------
+    // Check dihedral angles - correctly checking only adjacent faces
+    auto calculate_angle = [](const Point &normal1, const Point &normal2) {
+        double dot = dot_product(normal1, normal2);
+        double magnitude1 = std::sqrt(dot_product(normal1, normal1));
+        double magnitude2 = std::sqrt(dot_product(normal2, normal2));
+
+        // Avoid division by zero and clamp dot product to [-1, 1]
+        if (magnitude1 < 1e-10 || magnitude2 < 1e-10) {
+            return 0.0;  // Degenerate face
+        }
+
+        double cosine = dot / (magnitude1 * magnitude2);
+        // Clamp cosine to avoid domain errors with acos
+        cosine = std::max(-1.0, std::min(1.0, cosine));
+
+        return std::acos(cosine) * 180.0 / M_PI;  // Convert to degrees
     };
 
-    for (size_t i = 0; i < faces.size(); ++i) {
-        for (size_t j = i + 1; j < faces.size(); ++j) {
-            // Calculate normals for both faces
-            auto normal1 = cross_product(subtract(faces[i][1], faces[i][0]),
-                                         subtract(faces[i][2], faces[i][0]));
-            auto normal2 = cross_product(subtract(faces[j][1], faces[j][0]),
-                                         subtract(faces[j][2], faces[j][0]));
+    const std::array<std::array<int, 4>, 6> adjacent_faces = { {
+      { 2, 3, 4, 5 },  // Face 0 (top) is adjacent to 2,3,4,5
+      { 2, 3, 4, 5 },  // Face 1 (bottom) is adjacent to 2,3,4,5
+      { 0, 1, 3, 5 },  // Face 2 (front) is adjacent to 0,1,3,5
+      { 0, 1, 2, 4 },  // Face 3 (right) is adjacent to 0,1,2,4
+      { 0, 1, 3, 5 },  // Face 4 (back) is adjacent to 0,1,3,5
+      { 0, 1, 2, 4 }   // Face 5 (left) is adjacent to 0,1,2,4
+    } };
 
-            double angle = calculate_angle(normal1, normal2);
-            if (std::abs(angle - 90.0) > DIHEDRAL_ANGLE_TOLERANCE) {
-                return true;  // Severely distorted due to dihedral angle deviation
+    // Check dihedral angles between adjacent faces only
+    for (size_t i = 0; i < faces.size(); ++i) {
+        // Calculate normal for face i
+        auto normal1 = cross_product(subtract(faces[i][1], faces[i][0]),
+                                     subtract(faces[i][2], faces[i][0]));
+
+        for (const auto &j : adjacent_faces[i]) {
+            if (j > i) {  // To avoid checking pairs twice
+                // Calculate normal for face j
+                auto normal2 = cross_product(subtract(faces[j][1], faces[j][0]),
+                                             subtract(faces[j][2], faces[j][0]));
+
+                double angle = calculate_angle(normal1, normal2);
+
+                // For a perfect cube, adjacent faces would have 90-degree angles
+                if (std::abs(angle - 90.0) > DIHEDRAL_ANGLE_TOLERANCE) {
+                    return true;  // Severely distorted due to dihedral angle deviation
+                }
             }
         }
     }
 
+    // ---------------------------------------------------------------------------------
     // Check volume
-    double volume = hexahedron_volume(corners, 0.001);
-    if (volume < MIN_VOLUME_THRESHOLD) {
+    double volume = hexahedron_volume(corners);
+    if (volume < MIN_VOLUME_THRESHOLD * max_edge * max_edge * max_edge) {
         return true;  // Severely distorted due to near-zero volume
     }
 
@@ -402,21 +394,21 @@ bool
 is_hexahedron_thin(const HexahedronCorners &corners, const double threshold)
 {
     // Helper function to calculate the area of a quadrilateral face
-    auto calculate_area = [](const xyz::Point &p1, const xyz::Point &p2,
-                             const xyz::Point &p3, const xyz::Point &p4) -> double {
-        auto cross = [](const xyz::Point &a, const xyz::Point &b) {
-            return xyz::Point{ a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z,
-                               a.x * b.y - a.y * b.x };
+    auto calculate_area = [](const Point &p1, const Point &p2, const Point &p3,
+                             const Point &p4) -> double {
+        auto cross = [](const Point &a, const Point &b) {
+            return Point{ a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z,
+                          a.x * b.y - a.y * b.x };
         };
 
-        auto subtract = [](const xyz::Point &a, const xyz::Point &b) {
-            return xyz::Point{ a.x - b.x, a.y - b.y, a.z - b.z };
+        auto subtract = [](const Point &a, const Point &b) {
+            return Point{ a.x - b.x, a.y - b.y, a.z - b.z };
         };
 
         // Divide the quadrilateral into two triangles and calculate their areas
-        xyz::Point v1 = subtract(p2, p1);
-        xyz::Point v2 = subtract(p3, p1);
-        xyz::Point v3 = subtract(p4, p1);
+        Point v1 = subtract(p2, p1);
+        Point v2 = subtract(p3, p1);
+        Point v3 = subtract(p4, p1);
 
         double area1 =
           0.5 * std::sqrt(std::pow(cross(v1, v2).x, 2) + std::pow(cross(v1, v2).y, 2) +
@@ -482,7 +474,7 @@ is_hexahedron_concave_projected(const HexahedronCorners &corners)
     for (int ntop = 0; ntop < 2; ++ntop) {
         for (int nchk = 0; nchk < 4; ++nchk) {
             // Form a triangle with the other three corners
-            std::vector<xyz::Point> triangle_points;
+            std::vector<Point> triangle_points;
             for (int n = 0; n < 4; ++n) {
                 if (n != nchk) {
                     triangle_points.push_back({ xp[n][ntop], yp[n][ntop], 0.0 });
@@ -503,17 +495,69 @@ is_hexahedron_concave_projected(const HexahedronCorners &corners)
 }
 
 /**
- * @brief Get the bounding box for a cell, a wrapper for get_corners_minmax.
- * @param CellCorners struct
- * @return std::tuple<xyz::Point, xyz::Point> {min_point, max_point}
+ * @brief Get the bounding box for the hexahedron defined by its corners.
+ * @param corners The corners of the hexahedron
+ * @return std::tuple<Point, Point> {min_point, max_point}
  */
-std::tuple<xyz::Point, xyz::Point>
+std::tuple<Point, Point>
 get_hexahedron_bounding_box(const HexahedronCorners &corners)
 {
     auto minmax = get_hexahedron_minmax(corners);
-    auto min_point = xyz::Point(minmax[0], minmax[2], minmax[4]);
-    auto max_point = xyz::Point(minmax[1], minmax[3], minmax[5]);
+    auto min_point = Point(minmax[0], minmax[2], minmax[4]);
+    auto max_point = Point(minmax[1], minmax[3], minmax[5]);
     return std::make_tuple(min_point, max_point);
 }  // get_hexahedron_bounding_box
 
+/**
+ * @brief Check if a point is inside a hexahedron bounding box
+ * @param point The point to check
+ * @param hexahedron_corners The corners of the hexahedron
+ * @return true if the point is inside the bounding box, false otherwise
+ */
+bool
+is_point_in_hexahedron_bounding_box(const Point &point,
+                                    const HexahedronCorners &hexahedron_corners)
+{
+
+    // Quick rejection test using bounding box; this is independent of the method
+    auto [min_pt, max_pt] = get_hexahedron_bounding_box(hexahedron_corners);
+
+    double epsilon = 1e-8 * std::max({ max_pt.x - min_pt.x, max_pt.y - min_pt.y,
+                                       max_pt.z - min_pt.z });
+
+    // Use an epsilon for the bounding box check to handle numerical precision
+    if (point.x < min_pt.x - epsilon || point.x > max_pt.x + epsilon ||
+        point.y < min_pt.y - epsilon || point.y > max_pt.y + epsilon ||
+        point.z < min_pt.z - epsilon || point.z > max_pt.z + epsilon) {
+        return false;
+    }
+    return true;  // Point is within the bounding box
+}  // is_point_in_hexahedron_bounding_box
+
+/**
+ * @brief Check if a point is inside a hexahedron bounding box defined by its min and
+ * max points. This is a variant of the previous function that takes min and max points
+ * directly instead of the hexahedron corners.
+ * @param point The point to check
+ * @param min_pt The minimum point of the bounding box
+ * @param max_pt The maximum point of the bounding box
+ * @return true if the point is inside the bounding box, false otherwise
+ */
+bool
+is_point_in_hexahedron_bounding_box_minmax_pt(const Point &point,
+                                              const Point &min_pt,
+                                              const Point &max_pt)
+{
+
+    double epsilon = 1e-8 * std::max({ max_pt.x - min_pt.x, max_pt.y - min_pt.y,
+                                       max_pt.z - min_pt.z });
+
+    // Use an epsilon for the bounding box check to handle numerical precision
+    if (point.x < min_pt.x - epsilon || point.x > max_pt.x + epsilon ||
+        point.y < min_pt.y - epsilon || point.y > max_pt.y + epsilon ||
+        point.z < min_pt.z - epsilon || point.z > max_pt.z + epsilon) {
+        return false;
+    }
+    return true;  // Point is within the bounding box
+}  // is_point_in_hexahedron_bounding_box_minmax_pt
 }  // namespace xtgeo::geometry
