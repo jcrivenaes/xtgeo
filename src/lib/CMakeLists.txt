@@ -12,9 +12,7 @@ find_package(
 include(UseSWIG)
 find_package(pybind11 REQUIRED)
 
-if(UNIX AND NOT APPLE)
-  find_package(OpenMP REQUIRED)
-endif()
+find_package(OpenMP)
 
 message(STATUS "Python executable     : ${Python_EXECUTABLE}")
 message(STATUS "Python include dirs   : ${Python_INCLUDE_DIRS}")
@@ -35,6 +33,18 @@ FetchContent_Declare(
 set(FMT_MASTER_PROJECT OFF)
 set(BUILD_SHARED_LIBS OFF)
 FetchContent_MakeAvailable(fmt)
+
+# Add Eigen using FetchContent
+FetchContent_Declare(
+  eigen
+  GIT_REPOSITORY https://gitlab.com/libeigen/eigen.git
+  GIT_TAG 3.4.0) # or whatever version you prefer
+
+# Configure Eigen options before making it available
+set(EIGEN_BUILD_DOC OFF)
+set(BUILD_TESTING OFF)
+set(EIGEN_BUILD_PKGCONFIG OFF)
+FetchContent_MakeAvailable(eigen)
 
 # TODO: replace globbing with unique list, as globbing is bad practice
 file(GLOB SOURCES ${SRC}/*.c)
@@ -66,6 +76,7 @@ pybind11_add_module(
   "${SRC}/grid3d/cell.cpp"
   "${SRC}/grid3d/cell_xyz.cpp"
   "${SRC}/grid3d/grid.cpp"
+  "${SRC}/grid3d/grid_fence_extract.cpp"
   "${SRC}/grid3d/grid_xyz_in.cpp"
   "${SRC}/grid3d/grid_reorganize.cpp"
   "${SRC}/grid3d/grid_surf_oper.cpp"
@@ -76,13 +87,12 @@ pybind11_add_module(
 target_include_directories(_internal PRIVATE ${CMAKE_CURRENT_LIST_DIR}/include)
 # Link OpenMP
 
-if(UNIX
-   AND NOT APPLE
-   AND OpenMP_CXX_FOUND)
+if(OpenMP_CXX_FOUND)
   target_link_libraries(_internal PRIVATE OpenMP::OpenMP_CXX)
+  target_compile_definitions(_internal PRIVATE XTGEO_USE_OPENMP)
 endif()
 
-target_link_libraries(_internal PRIVATE fmt::fmt)
+target_link_libraries(_internal PRIVATE fmt::fmt Eigen3::Eigen)
 
 message(STATUS "Compiling swig bindings")
 
