@@ -2364,8 +2364,25 @@ class Grid(_Grid3D):
             poly, layer_range=layer_range, inside=False, force_close=force_close
         )
 
-    def collapse_inactive_cells(self) -> None:
-        """Collapse inactive layers where, for I J with other active cells."""
+    def collapse_inactive_cells(self, internal: bool = True) -> None:
+        """Collapse inactive layers where, for I J with other active cells.
+
+        Seen by I,J column, the inactive cells are collapsed to the first active cell in
+        the column. First transversed from top, then from bottom. If no active cells in
+        the column, the (invisible) Z coordinates are averaged to one common location.
+
+        If `internal` is True (default), then also internal inactive cells (i.e.
+        inactive "hole" surrounded by active cells) are collapsed. In this case the Z
+        coordinates of the adjacent active cells are moved.
+
+        The current grid instance will be updated.
+
+
+        Args:
+            internal: If True (default), then the internal collapse is done.
+
+
+        """
         _grid_etc1.collapse_inactive_cells(self)
 
     def crop(

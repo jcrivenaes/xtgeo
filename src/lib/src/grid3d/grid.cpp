@@ -665,5 +665,104 @@ refine_rows(const Grid &grid_cpp, const py::array_t<uint8_t> refinement)
     }
     return std::make_tuple(coordref, zcornref, actnumref);
 }
+/**
+ * Loop over each column, and if a cell is inactive, then the ZCORN is collapsed
+ * Note: This works with xtgformat=2 (zcornsv organized as [i][j][k][corner])
+ *
+ *            |             |
+ *       i,j+1|             |i+1,j+1
+ *        ----|-------------|-------
+ *            |1           0|
+ *            |    I,J      |         Relation between cell I,J and corner coordinates
+ *            |3           2|
+ *        ----|-------------|-------
+ *         i,j|             |i+1,j
+ *
+ * Remember that zcornsv has dimension (ncol+1, nrow+1, nlay+1, 4) for Zcorn pillars
+ */
+py::array_t<float>
+collapse_inactive_cells(const Grid &grid_cpp)
+{
+    auto &logger = xtgeo::logging::LoggerManager::get("collapse_inactive_cells");
+    auto actnumsv_ = grid_cpp.get_actnumsv().unchecked<3>();  // [i][j][k]
+    auto zcorn_ = grid_cpp.get_zcornsv().unchecked<4>();      // [i][j][k][corner]
 
+    // Create a copy of zcornsv to modify
+    py::array_t<float> zcorn_new = py::array_t<float>(grid_cpp.get_zcornsv());
+    auto zcorn_out_ = zcorn_new.mutable_unchecked<4>();
+
+    size_t ncol = grid_cpp.get_ncol();
+    size_t nrow = grid_cpp.get_nrow();
+    size_t nlay = grid_cpp.get_nlay();
+
+    logger.debug("Collapsing inactive cells for grid ({}, {}, {})", ncol, nrow, nlay);
+
+    // Loop over each column (i, j)
+    for (size_t i = 0; i < ncol; i++) {
+        for (size_t j = 0; j < nrow; j++) {
+
+            // Check if column has any active cells
+            bool has_active = false;
+            for (size_t k = 0; k < nlay; k++) {
+                if (actnumsv_(i, j, k) == 1) {
+                    has_active = true;
+                    break;
+                }
+            }
+
+            if (!has_active) {  // Fixed: use ! instead of not
+                // If no active cells, the zcoords are set to middle cell (K/2)
+                size_t k_mid = nlay / 2;
+
+                for (size_t k = 0; k <= nlay; k++) {  // "<=" is intentional
+
+                    zcorn_out_(i, j, k, 3) = zcorn_(i, j, k_mid, 3);
+                    zcorn_out_(i + 1, j, k, 2) = zcorn_(i + 1, j, k_mid, 2);
+                    zcorn_out_(i, j + 1, k, 1) = zcorn_(i, j + 1, k_mid, 1);
+                    zcorn_out_(i + 1, j + 1, k, 0) = zcorn_(i + 1, j + 1, k_mid, 0);
+                }
+                continue;
+            }
+
+            // transverse from top towards bottom
+            for (size_t k = 0; k < nlay; k++) {
+
+                // If cell is active, transverse back to top
+                if (actnumsv_(i, j, k) == 1) {
+
+                    if (k > 0) {
+                        // Fixed: Use signed int to avoid infinite loop
+                        for (int kk = static_cast<int>(k) - 1; kk >= 0; kk--) {
+                            zcorn_out_(i, j, kk, 3) = zcorn_(i, j, k, 3);
+                            zcorn_out_(i + 1, j, kk, 2) = zcorn_(i + 1, j, k, 2);
+                            zcorn_out_(i, j + 1, kk, 1) = zcorn_(i, j + 1, k, 1);
+                            zcorn_out_(i + 1, j + 1, kk, 0) =
+                              zcorn_(i + 1, j + 1, k, 0);  // Fixed: zcorn_ not zcornsv_
+                        }
+                    }
+                    break;  // Found first active cell, exit loop
+                }
+            }
+
+            // transverse from bottom to top
+            for (size_t k = nlay; k > 0; k--) {
+                if (actnumsv_(i, j, k - 1) == 1) {
+                    if (k < nlay) {
+                        for (size_t kk = k; kk <= nlay; kk++) {
+                            zcorn_out_(i, j, kk, 3) = zcorn_(i, j, k - 1, 3);
+                            zcorn_out_(i + 1, j, kk, 2) = zcorn_(i + 1, j, k - 1, 2);
+                            zcorn_out_(i, j + 1, kk, 1) = zcorn_(i, j + 1, k - 1, 1);
+                            zcorn_out_(i + 1, j + 1, kk, 0) = zcorn_(
+                              i + 1, j + 1, k - 1, 0);  // Fixed: zcorn_ not zcornsv_
+                        }
+                    }
+                    break;  // Found last active cell, exit loop
+                }
+            }
+        }
+    }
+
+    logger.debug("Collapsing inactive cells... done");
+    return zcorn_new;
+}
 }  // namespace xtgeo::grid3d

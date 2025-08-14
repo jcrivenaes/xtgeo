@@ -1053,13 +1053,23 @@ def inactivate_inside(
         raise RuntimeError("Problems with one or more polygons. Not closed?")
 
 
-def collapse_inactive_cells(self: Grid) -> None:
+def collapse_inactive_cells(self: Grid, internal: bool = True) -> None:
     """Collapse inactive cells."""
-    self._set_xtgformat1()
+    # self._set_xtgformat1()
 
-    _cxtgeo.grd3d_collapse_inact(
-        self.ncol, self.nrow, self.nlay, self._zcornsv, self._actnumsv
-    )
+    # _cxtgeo.grd3d_collapse_inact(
+    #     self.ncol, self.nrow, self.nlay, self._zcornsv, self._actnumsv
+    # )
+
+    self._set_xtgformat2()
+
+    grid_cpp = _internal.grid3d.Grid(self)
+    new_zcornsv = grid_cpp.collapse_inactive_cells()
+
+    if new_zcornsv is not None:
+        self._zcornsv = new_zcornsv
+
+    print("Collapse inactive cells done")
 
 
 def copy(self: Grid) -> Grid:
