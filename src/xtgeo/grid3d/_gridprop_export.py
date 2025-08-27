@@ -152,7 +152,7 @@ def _export_xtgcpprop(
 ) -> None:
     """Export to experimental xtgcpproperty format, python version."""
     logger.debug("Export as xtgcpprop...")
-    gridprop._metadata.required = gridprop
+    gridprop._metadata.required = gridprop  # type: ignore[assignment]
 
     magic = 1352 if gridprop.isdiscrete else 1351
     prevalues = (1, magic, 4, gridprop.ncol, gridprop.nrow, gridprop.nlay)

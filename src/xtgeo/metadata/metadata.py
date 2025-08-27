@@ -14,7 +14,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-import xtgeo
 from xtgeo.common.constants import UNDEF
 from xtgeo.common.log import null_logger
 
@@ -56,7 +55,7 @@ class _OptionalMetaData:
     def __init__(self) -> None:
         self._name = "A Longer Descriptive Name e.g. from SMDA"
         self._shortname = "TheShortName"
-        self._datatype = None
+        self._datatype: str | None = None
         self._md5sum: str | None = None
         self._description = "Some description"
         self._crs = None
@@ -147,15 +146,15 @@ class _OptionalMetaData:
 class MetaData:
     """Generic metadata class, not intended to be used directly."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Generic metadata class __init__, not be used directly."""
-        self._required = {}
+        self._required: dict[str, Any] = {}
         self._optional = _OptionalMetaData()
         self._freeform = {}
 
         self._freeform = {"smda": "whatever"}
 
-    def get_metadata(self):
+    def get_metadata(self) -> dict[str, Any]:
         """Get all metadata that are present."""
         allmeta = {}
         allmeta["_required_"] = self._required
@@ -164,7 +163,7 @@ class MetaData:
         return allmeta
 
     @property
-    def optional(self):
+    def optional(self) -> dict[str, Any]:
         """Return or set optional metadata.
 
         When setting optional names, it can be done in several ways...
@@ -176,7 +175,7 @@ class MetaData:
         return self._optional.get_meta()
 
     @optional.setter
-    def optional(self, indict):
+    def optional(self, indict: dict[str, Any]) -> None:
         # setting the optional key, including validation
         if not isinstance(indict, dict):
             raise ValueError(f"Input must be a dictionary, not a {type(indict)}")
@@ -185,7 +184,7 @@ class MetaData:
             setattr(self._optional, "_" + key, value)
 
     @property
-    def opt(self):
+    def opt(self) -> _OptionalMetaData:
         """Return the metadata optional instance.
 
         This makes access to the _OptionalMetaData instance.
@@ -198,26 +197,17 @@ class MetaData:
         """
         return self._optional
 
-    @optional.setter
-    def optional(self, indict):
-        # setting the optional key, including validation
-        if not isinstance(indict, dict):
-            raise ValueError(f"Input must be a dictionary, not a {type(indict)}")
-
-        for key, value in indict.items():
-            setattr(self._optional, "_" + key, value)
-
     @property
-    def freeform(self):
+    def freeform(self) -> dict[str, Any]:
         """Get or set the current freeform metadata dictionary."""
         return self._freeform
 
     @freeform.setter
-    def freeform(self, adict):
+    def freeform(self, adict: dict[str, Any]) -> None:
         """Freeform is a whatever you want set, without any validation."""
         self._freeform = adict.copy()
 
-    def generate_fmu_name(self):
+    def generate_fmu_name(self) -> str:
         """Generate FMU name on form xxxx--yyyy--date but no suffix."""
         fname = ""
         first = "prefix"
@@ -245,20 +235,22 @@ class MetaDataRegularSurface(MetaData):
         "undef": UNDEF,
     }
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Docstring."""
         super().__init__()
-        self._required = __class__.REQUIRED
+        self._required = self.__class__.REQUIRED
         self._optional._datatype = "Regular Surface"
 
     @property
-    def required(self):
+    def required(self) -> dict[str, Any]:
         """Get of set required metadata."""
         return self._required
 
     @required.setter
-    def required(self, obj):
-        if not isinstance(obj, xtgeo.RegularSurface):
+    def required(self, obj: Any) -> None:
+        from xtgeo.surface.regular_surface import RegularSurface
+
+        if not isinstance(obj, RegularSurface):
             raise ValueError("Input object is not a RegularSurface()")
 
         self._required["ncol"] = obj.ncol
@@ -292,20 +284,22 @@ class MetaDataRegularCube(MetaData):
         "undef": UNDEF,
     }
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Docstring."""
         super().__init__()
-        self._required = __class__.REQUIRED
+        self._required = self.__class__.REQUIRED
         self._optional._datatype = "Regular Cube"
 
     @property
-    def required(self):
+    def required(self) -> dict[str, Any]:
         """Get of set required metadata."""
         return self._required
 
     @required.setter
-    def required(self, obj):
-        if not isinstance(obj, xtgeo.Cube):
+    def required(self, obj: Any) -> None:
+        from xtgeo.cube.cube1 import Cube
+
+        if not isinstance(obj, Cube):
             raise ValueError("Input object is not a regular Cube()")
 
         self._required["ncol"] = obj.ncol
@@ -338,20 +332,22 @@ class MetaDataCPGeometry(MetaData):
         "zscale": 1.0,
     }
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Docstring."""
         super().__init__()
-        self._required = __class__.REQUIRED
+        self._required = self.__class__.REQUIRED
         self._optional._datatype = "CornerPoint GridGeometry"
 
     @property
-    def required(self):
+    def required(self) -> dict[str, Any]:
         """Get of set required metadata."""
         return self._required
 
     @required.setter
-    def required(self, obj):
-        if not isinstance(obj, xtgeo.Grid):
+    def required(self, obj: Any) -> None:
+        from xtgeo.grid3d.grid import Grid
+
+        if not isinstance(obj, Grid):
             raise ValueError("Input object is not a Grid()")
 
         self._required["ncol"] = obj.ncol
@@ -377,20 +373,22 @@ class MetaDataCPProperty(MetaData):
         "discrete": False,
     }
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Docstring."""
         super().__init__()
-        self._required = __class__.REQUIRED
+        self._required = self.__class__.REQUIRED
         self._optional._datatype = "CornerPoint GridProperty"
 
     @property
-    def required(self):
+    def required(self) -> dict[str, Any]:
         """Get of set required metadata."""
         return self._required
 
     @required.setter
-    def required(self, obj):
-        if not isinstance(obj, xtgeo.GridProperty):
+    def required(self, obj: Any) -> None:
+        from xtgeo.grid3d.grid_property import GridProperty
+
+        if not isinstance(obj, GridProperty):
             raise ValueError("Input object is not a GridProperty()")
 
         self._required["ncol"] = obj.ncol
@@ -413,20 +411,22 @@ class MetaDataWell(MetaData):
         "zonelogname": None,
     }
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialisation for Well metadata."""
         super().__init__()
-        self._required = __class__.REQUIRED
+        self._required = self.__class__.REQUIRED
         self._optional._datatype = "Well"
 
     @property
-    def required(self):
+    def required(self) -> dict[str, Any]:
         """Get of set required metadata."""
         return self._required
 
     @required.setter
-    def required(self, obj):
-        if not isinstance(obj, xtgeo.Well):
+    def required(self, obj: Any) -> None:
+        from xtgeo.well.well1 import Well
+
+        if not isinstance(obj, Well):
             raise ValueError("Input object is not a Well() instance!")
 
         self._required["rkb"] = obj.rkb
