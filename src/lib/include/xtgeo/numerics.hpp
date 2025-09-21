@@ -71,10 +71,9 @@ linear_interpolate(const T &points, int ndiv)
 {
     size_t n_points = points.size();
     if (ndiv <= 1 || n_points < 2) {
-        std::vector<double> result;
-        result.reserve(n_points);
+        std::vector<double> result(n_points);
         for (size_t i = 0; i < n_points; ++i) {
-            result.push_back(points[i]);
+            result[i] = points[i];
         }
         return result;
     }
@@ -108,10 +107,9 @@ catmull_rom_spline(const T &points, int ndiv)
 {
     size_t n_points = points.size();
     if (ndiv <= 1 || n_points < 2) {
-        std::vector<double> result;
-        result.reserve(n_points);
+        std::vector<double> result(n_points);
         for (size_t i = 0; i < n_points; ++i) {
-            result.push_back(points[i]);
+            result[i] = points[i];
         }
         return result;
     }
@@ -178,34 +176,47 @@ public:
      */
     explicit CubicSplineSolver(const std::vector<double> &x_pts) : n_(x_pts.size())
     {
-        if (n_ < 3) {
+        if (n_ < 2) {  // Allow for linear interpolation case
             return;
         }
-
-        std::vector<double> h(n_ - 1);
+        h_.resize(n_ - 1);
         for (size_t i = 0; i < n_ - 1; ++i) {
-            h[i] = x_pts[i + 1] - x_pts[i];
+            h_[i] = x_pts[i + 1] - x_pts[i];
+            if (!(h_[i] > 0.0)) {  // Epsilon comparison might be safer
+                throw std::invalid_argument(
+                  "CubicSplineSolver: x_pts must be strictly increasing");
+            }
+        }
+
+        if (n_ < 3) {  // Not enough points for cubic spline
+            return;
         }
 
         Eigen::SparseMatrix<double> A(n_, n_);
         std::vector<Eigen::Triplet<double>> triplets;
-        triplets.reserve(3 * n_);
+        triplets.reserve(3 * n_ - 4);  // More precise reservation
 
+        // Standard interior points
         for (size_t i = 1; i < n_ - 1; ++i) {
-            triplets.emplace_back(i, i - 1, h[i - 1]);
-            triplets.emplace_back(i, i, 2 * (h[i - 1] + h[i]));
-            triplets.emplace_back(i, i + 1, h[i]);
+            triplets.emplace_back(i, i - 1, h_[i - 1]);
+            triplets.emplace_back(i, i, 2 * (h_[i - 1] + h_[i]));
+            triplets.emplace_back(i, i + 1, h_[i]);
         }
 
-        triplets.emplace_back(0, 0, h[1]);
-        triplets.emplace_back(0, 1, -(h[0] + h[1]));
-        triplets.emplace_back(0, 2, h[0]);
-        triplets.emplace_back(n_ - 1, n_ - 3, h[n_ - 2]);
-        triplets.emplace_back(n_ - 1, n_ - 2, -(h[n_ - 3] + h[n_ - 2]));
-        triplets.emplace_back(n_ - 1, n_ - 1, h[n_ - 3]);
+        // Not-a-knot boundary conditions
+        triplets.emplace_back(0, 0, h_[1]);
+        triplets.emplace_back(0, 1, -(h_[0] + h_[1]));
+        triplets.emplace_back(0, 2, h_[0]);
+        triplets.emplace_back(n_ - 1, n_ - 3, h_[n_ - 2]);
+        triplets.emplace_back(n_ - 1, n_ - 2, -(h_[n_ - 3] + h_[n_ - 2]));
+        triplets.emplace_back(n_ - 1, n_ - 1, h_[n_ - 3]);
 
         A.setFromTriplets(triplets.begin(), triplets.end());
         solver_.compute(A);
+        if (solver_.info() != Eigen::Success) {
+            // It's good practice to check for decomposition failure here.
+            // Depending on desired behavior, you could throw or set a failure state.
+        }
     }
 
     /**
@@ -215,50 +226,61 @@ public:
                                     const std::vector<double> &y_pts,
                                     const std::vector<double> &new_x_pts) const
     {
-        if (n_ < 2) {
-            return std::vector<double>(new_x_pts.size(), n_ > 0 ? y_pts[0] : 0.0);
+        if (n_ != x_pts.size() || n_ != y_pts.size()) {
+            throw std::invalid_argument("Input vector sizes do not match solver size.");
         }
-        if (n_ < 3) {
+
+        if (n_ < 2) {
+            return std::vector<double>(new_x_pts.size(), n_ == 1 ? y_pts[0] : 0.0);
+        }
+        if (n_ == 2) {  // Handle linear case explicitly
             std::vector<double> result;
             result.reserve(new_x_pts.size());
+            if (h_[0] <= 0)
+                return std::vector<double>(new_x_pts.size(),
+                                           y_pts[0]);  // Avoid division by zero
             for (const auto &x : new_x_pts) {
-                double t = (x - x_pts[0]) / (x_pts[1] - x_pts[0]);
+                double t = (x - x_pts[0]) / h_[0];
                 result.push_back(y_pts[0] + t * (y_pts[1] - y_pts[0]));
             }
             return result;
         }
 
-        std::vector<double> h(n_ - 1);
         Eigen::VectorXd b = Eigen::VectorXd::Zero(n_);
-        for (size_t i = 0; i < n_ - 1; ++i) {
-            h[i] = x_pts[i + 1] - x_pts[i];
-            if (i > 0) {
-                b(i) = 6 * ((y_pts[i + 1] - y_pts[i]) / h[i] -
-                            (y_pts[i] - y_pts[i - 1]) / h[i - 1]);
-            }
+        for (size_t i = 1; i < n_ - 1; ++i) {
+            b(i) = 6.0 * ((y_pts[i + 1] - y_pts[i]) / h_[i] -
+                          (y_pts[i] - y_pts[i - 1]) / h_[i - 1]);
         }
 
         if (solver_.info() != Eigen::Success) {
+            // Consider throwing an exception or returning an empty vector
+            // to indicate that the solver was not successfully initialized.
             return {};
         }
         Eigen::VectorXd M = solver_.solve(b);
+        if (solver_.info() != Eigen::Success) {
+            // Solving failed for this specific `b` vector.
+            return {};
+        }
 
         std::vector<double> y_new;
         y_new.reserve(new_x_pts.size());
 
+        size_t seg = 0;
         for (const auto &x : new_x_pts) {
-            auto it = std::upper_bound(x_pts.begin(), x_pts.end(), x);
-            size_t seg = std::distance(x_pts.begin(), it) - 1;
-            seg = std::max((size_t)0, std::min(seg, n_ - 2));
+            // Find segment for x, can be optimized if new_x_pts is sorted
+            while (seg < n_ - 2 && x_pts[seg + 1] < x) {
+                seg++;
+            }
 
             double dx1 = x - x_pts[seg];
             double dx2 = x_pts[seg + 1] - x;
-            double h_seg = h[seg];
+            double h_seg = h_[seg];
 
             double val =
               (dx2 / h_seg) * y_pts[seg] + (dx1 / h_seg) * y_pts[seg + 1] +
-              ((dx2 * dx2 * dx2 / (6 * h_seg)) - (dx2 * h_seg / 6)) * M(seg) +
-              ((dx1 * dx1 * dx1 / (6 * h_seg)) - (dx1 * h_seg / 6)) * M(seg + 1);
+              (dx1 * dx1 * dx1 - h_seg * h_seg * dx1) * M(seg + 1) / (6 * h_seg) +
+              (dx2 * dx2 * dx2 - h_seg * h_seg * dx2) * M(seg) / (6 * h_seg);
             y_new.push_back(val);
         }
         return y_new;
@@ -266,6 +288,7 @@ public:
 
 private:
     size_t n_;
+    std::vector<double> h_;
     Eigen::SparseLU<Eigen::SparseMatrix<double>> solver_;
 };
 
