@@ -735,13 +735,14 @@ class Cube:
         .. versionadded:: 4.1
 
         """
-        algorithm = kwargs.get("algorithm", 2)
+        algorithm = kwargs.get("algorithm", 2)  # for a limited period, until ~mid 2026
 
-        if algorithm == 1:
+        if algorithm == 1:  # old implementation; for comparison
             return _cube_window_attributes.CubeAttrs(
                 self, upper, lower, ndiv, interpolation, minimum_thickness
             ).result()
 
+        # new much faster and much less memory overhead.
         return _cube_window_attributes.CubeAttrsV2(
             self, upper, lower, ndiv, interpolation, minimum_thickness
         ).result()

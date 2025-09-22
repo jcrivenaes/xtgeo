@@ -5,6 +5,7 @@ import numpy as np
 import pytest
 
 import xtgeo
+from tests.conftest import measure_peak_memory_usage
 from xtgeo.common.log import functimer
 
 xtg = xtgeo.common.XTGeoDialog()
@@ -44,53 +45,9 @@ def fixture_loadsfile3(testdata_path):
     return xtgeo.cube_from_file(testdata_path / SFILE3)
 
 
-def _get_peak_memory_usage(func, *args, **kwargs):
-    """
-    Measure peak memory usage of a function call in a separate thread.
-    Requires psutil.
-    """
-    import threading
-    import time
-
-    import psutil
-
-    process = psutil.Process()
-    mem_before = process.memory_info().rss
-    peak_memory = mem_before
-
-    # Event to signal the main function has finished
-    finished = threading.Event()
-
-    def measure():
-        nonlocal peak_memory
-        while not finished.is_set():
-            try:
-                mem = process.memory_info().rss
-                if mem > peak_memory:
-                    peak_memory = mem
-            except psutil.NoSuchProcess:
-                break
-            time.sleep(0.01)  # 10 ms interval
-
-    # Start monitoring
-    monitor_thread = threading.Thread(target=measure)
-    monitor_thread.start()
-
-    try:
-        # Run the function
-        result = func(*args, **kwargs)
-    finally:
-        # Stop monitoring
-        finished.set()
-        monitor_thread.join()
-
-    return peak_memory - mem_before, result
-
-
 @pytest.mark.bigtest
 def test_large_cube_memory_usage():
     """Get attribute around a constant cube slices and check peak memory."""
-    pytest.importorskip("psutil")
     import gc
 
     # Cube size: 500 * 600 * 700 * 4 bytes ~= 840 MB
@@ -101,34 +58,31 @@ def test_large_cube_memory_usage():
     level1 = 10
     level2 = 800
 
+    @measure_peak_memory_usage
+    @functimer(output="print")
+    def compute_with_mem_tracking(cube, alg, interp):
+        """Helper function to be decorated."""
+        return cube.compute_attributes_in_window(
+            level1,
+            level2,
+            algorithm=alg,
+            interpolation=interp,
+        )
+
     # Force garbage collection to get a cleaner baseline
     gc.collect()
 
     for algorithm in [1, 2]:
         for intp in ["linear", "cubic"]:
-
-            @functimer(
-                output="print",
-                comment=f"For algorithm {algorithm} using {intp} interpolation",
+            print(f"\nTesting algorithm={algorithm}, interpolation={intp}")
+            peak_mem_increase_bytes, result = compute_with_mem_tracking(
+                mycube, algorithm, intp
             )
-            def compute():
-                peak_mem_increase_bytes, result = _get_peak_memory_usage(
-                    mycube.compute_attributes_in_window,
-                    level1,
-                    level2,
-                    algorithm=algorithm,
-                    interpolation=intp,
-                )
-                return peak_mem_increase_bytes, result
-
-            peak_mem_increase_bytes, result = compute()
 
             del result
-            gc.collect()
+            gc.collect()  # Clean up before the next run
 
             peak_mem_increase_gb = peak_mem_increase_bytes / (1024 * 1024 * 1024)
-
-            print(f"Peak memory increase: {peak_mem_increase_gb:.2f} GB")
 
             # The cube itself is ~840MB. The operation needs more.
             # Let's set a reasonable upper bound for this cube size.
