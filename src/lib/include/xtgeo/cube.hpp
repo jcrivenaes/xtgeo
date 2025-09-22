@@ -21,7 +21,9 @@ cube_stats_along_z_v2(const Cube &cube_cpp,
                       const py::array_t<double> &depth_array,
                       int ndiv = 1,
                       const std::string &interpolation = "linear",
-                      double min_thickness = 0.0);
+                      double min_thickness = 0.0,
+                      int min_index = 0,
+                      int max_index = -1);
 
 inline void
 init(py::module &m)

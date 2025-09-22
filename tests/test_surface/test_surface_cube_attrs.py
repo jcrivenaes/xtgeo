@@ -532,11 +532,15 @@ def test_compute_attrs_handling_of_dead_traces(loadsfile3):
     """Test handling of dead traces in the cube."""
     cube = loadsfile3
 
+    cube.to_file("/tmp/c.segy")
+
     # Create a surface that is above the dead traces
     surf = xtgeo.surface_from_cube(cube, 1000.0)
 
     # Compute attributes in window
-    attrs = cube.compute_attributes_in_window(surf, surf + 10)
+    attrs = cube.compute_attributes_in_window(surf, surf + 10, algorithm=2)
+
+    attrs["mean"].to_file("/tmp/mean2.gri")
 
     # Check if the result is as expected
     assert "mean" in attrs

@@ -44,6 +44,10 @@ SUM_ATTRS: Final = [
 class CubeAttrs:
     """Internal class for computing attributes in window between two surfaces."""
 
+    # This is the former implemantation which is now made hidden for the end user.
+    # However, keep this for a while for small while (say mid 2026) for test purposes
+    # (benchmarking) and emergency fall-back.
+
     cube: Cube
     upper_surface: RegularSurface | float | int
     lower_surface: RegularSurface | float | int
@@ -368,7 +372,13 @@ class CubeAttrs:
 
 @dataclass
 class CubeAttrsV2:
-    """Internal class (v2) for computing attributes in window between two surfaces."""
+    """Internal class (v2) for computing attributes in window between two surfaces.
+
+    Compared with the former implementation, more logic is moved to the C++ routine,
+    ensuring:
+    - Significantly smaller memory overhead (e.g. 0.5 GB vs 20 GB)
+    - Much faster execution, in particularly when using multiple processers. (5-10 x)
+    """
 
     cube: Cube
     upper_surface: RegularSurface | float | int
@@ -381,6 +391,8 @@ class CubeAttrsV2:
     _template_surface: RegularSurface | None = None
     _depth_array: np.ndarray | None = None
     _outside_depth: float | None = None  # detected and updated from the depth cube
+    _min_indices: int = 0  # minimum Z index for cube slicing
+    _max_indices: int = 0  # maximum Z index for cube slicing
     _reduced_cube: Cube = None
     _reduced_depth_array: np.ndarray | None = None
     _refined_cube: Cube | None = None
@@ -396,7 +408,7 @@ class CubeAttrsV2:
     def __post_init__(self) -> None:
         self._process_upper_lower_surface()
         self._create_depth_array()
-        self._create_reduced_cube()
+        self._determine_slice_indices()
         self._compute_statistical_attribute_surfaces()
 
     def result(self) -> dict[RegularSurface]:
@@ -505,19 +517,14 @@ class CubeAttrsV2:
         )
         logger.debug("Create depth array... done")
 
-    def _create_reduced_cube(self) -> None:
-        """Create a smaller cube based on the depth cube filter.
+    def _determine_slice_indices(self) -> None:
+        """Create parameters for cube slicing.
 
         The purpose is to limit the computation to the relevant volume, to save
         CPU time. I.e. cube values above the upper surface and below the lower are
         now excluded.
         """
-        from xtgeo import Cube  # avoid circular import by having this here
-
-        logger.debug("Create reduced cube...")
-
-        cubev = self.cube.values.copy()  # copy, so we don't change the input instance
-        cubev[self.cube.traceidcodes == 2] = 0.0  # set traceidcode 2 to zero
+        logger.debug("Determine cube slice indices...")
 
         # Create a boolean mask based on the threshold
         mask = self._depth_array < self._outside_depth
@@ -531,34 +538,13 @@ class CubeAttrsV2:
                 "outside the cube?"
             )
 
-        min_indices = np.min(non_zero_indices)
-        max_indices = np.max(non_zero_indices) + 1  # Add 1 to include the upper bound
+        self._min_indices = int(np.min(non_zero_indices))
+        # Add 1 to include the upper bound
+        self._max_indices = int(np.max(non_zero_indices) + 1)
 
-        # Extract the reduced cube using slicing
-        reduced = cubev[:, :, min_indices:max_indices]
-
-        zori = float(self._depth_array.min())
-
-        self._reduced_cube = Cube(
-            ncol=reduced.shape[0],
-            nrow=reduced.shape[1],
-            nlay=reduced.shape[2],
-            xinc=self.cube.xinc,
-            yinc=self.cube.yinc,
-            zinc=self.cube.zinc,
-            xori=self.cube.xori,
-            yori=self.cube.yori,
-            zori=zori,
-            rotation=self.cube.rotation,
-            yflip=self.cube.yflip,
-            values=reduced.astype(np.float32),
-        )
-
-        self._reduced_depth_array = self._depth_array[min_indices:max_indices]
-
-        logger.debug("Create reduced cube... done")
+        logger.debug("Determine cube slice indices... done")
         logger.debug(
-            "Reduced cube created with shape %s", self._reduced_cube.values.shape
+            "Cube slice indices: %d to %d", self._min_indices, self._max_indices
         )
 
     def _add_to_attribute_map(self, attr_name: str, values: np.ndarray) -> None:
@@ -566,11 +552,6 @@ class CubeAttrsV2:
         logger.debug("Add to attribute map...")
         attr_map = self._upper.copy()
         attr_map.values = np.ma.masked_invalid(values)
-
-        # apply mask for the cube's dead traces (traceidcode 2)
-        attr_map.values = np.ma.masked_where(
-            self.cube.traceidcodes == 2, attr_map.values
-        )
 
         # now resample to the original input map
         attr_map_resampled = self._template_surface.copy()
@@ -589,15 +570,17 @@ class CubeAttrsV2:
         """Compute stats very fast by using internal C++ bindings."""
         logger.debug("Compute statistical attribute surfaces...")
 
-        # compute statistics for vertically refined cube
-        cubecpp = _internal.cube.Cube(self._reduced_cube)
+        # compute statistics for vertically refined cube using original cube
+        cubecpp = _internal.cube.Cube(self.cube)
         all_attrs = cubecpp.cube_stats_along_z_v2(
             self._upper.values,
             self._lower.values,
-            self._reduced_depth_array,
+            self._depth_array,  # use original depth array
             self.ndiv,
             self.interpolation,
             self.minimum_thickness,
+            self._min_indices,  # pass slice indices
+            self._max_indices,
         )
 
         for attr in STAT_ATTRS:
@@ -607,10 +590,12 @@ class CubeAttrsV2:
         all_attrs = cubecpp.cube_stats_along_z_v2(
             self._upper.values,
             self._lower.values,
-            self._reduced_depth_array,
+            self._depth_array,  # use original depth array
             1,
             self.interpolation,
             self.minimum_thickness,
+            self._min_indices,  # pass slice indices
+            self._max_indices,
         )
 
         for attr in SUM_ATTRS:

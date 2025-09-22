@@ -201,6 +201,10 @@ cube_stats_along_z(const Cube &cube)
  * @param lower_surface 2D array of lower surface Z values
  * @param depth_array 1D array of depth values corresponding to cube layers
  * @param ndiv Number of subdivisions between layers for interpolation (default: 1, no
+ * @param interpolation Interpolation method ("cubic" or "linear")
+ * @param min_thickness Minimum thickness for valid computation
+ * @param min_index Optional minimum Z index for cube slicing (default: 0)
+ * @param max_index Optional maximum Z index for cube slicing (default: nlay)
  * @return A map of arrays: min, max, mean, var, rms, maxpos, maxneg, maxabs,
  * meanpos, meanneg, meanabs, sumpos, sumneg, sumabs
  */
@@ -211,7 +215,9 @@ cube_stats_along_z_v2(const Cube &cube,
                       const py::array_t<double> &depth_array,
                       int ndiv,
                       const std::string &interpolation,
-                      double min_thickness)
+                      double min_thickness,
+                      int min_index,
+                      int max_index)
 {
     auto &logger =
       xtgeo::logging::LoggerManager::get("xtgeo.cube.cube_stats_along_z_v2");
@@ -219,6 +225,17 @@ cube_stats_along_z_v2(const Cube &cube,
     size_t ncol = cube.ncol;
     size_t nrow = cube.nrow;
     size_t nlay = cube.nlay;
+
+    // Handle default slice indices
+    if (max_index < 0) {
+        max_index = static_cast<int>(nlay);
+    }
+    if (min_index < 0) {
+        min_index = 0;
+    }
+    if (max_index > static_cast<int>(nlay)) {
+        max_index = static_cast<int>(nlay);
+    }
 
     auto upper_ = upper_surface.unchecked<2>();
     auto lower_ = lower_surface.unchecked<2>();
@@ -240,6 +257,7 @@ cube_stats_along_z_v2(const Cube &cube,
     py::array_t<double> sumabsv({ ncol, nrow });
 
     auto cubev_ = cube.values.unchecked<3>();  // Use unchecked for efficiency
+    auto traceidcodes_ = cube.traceidcodes.unchecked<2>();  // Access traceidcodes
     auto minv_ = minv.mutable_unchecked<2>();
     auto maxv_ = maxv.mutable_unchecked<2>();
     auto meanv_ = meanv.mutable_unchecked<2>();
@@ -255,14 +273,13 @@ cube_stats_along_z_v2(const Cube &cube,
     auto sumnegv_ = sumnegv.mutable_unchecked<2>();
     auto sumabsv_ = sumabsv.mutable_unchecked<2>();
 
-    // Pre-compute the spline solver if using cubic interpolation
-    std::unique_ptr<numerics::CubicSplineSolver> solver_owner;
-    numerics::CubicSplineSolver *spline_solver = nullptr;
-    if (interpolation == "cubic" && nlay > 2) {
-        std::vector<double> x_pts(nlay);
+    // Pre-compute effective layer count and spline solver
+    size_t effective_nlay = max_index - min_index;
+    std::unique_ptr<numerics::CubicSplineSolver> spline_solver;
+    if (interpolation == "cubic" && ndiv > 1 && effective_nlay > 2) {
+        std::vector<double> x_pts(effective_nlay);
         std::iota(x_pts.begin(), x_pts.end(), 0);
-        solver_owner = std::make_unique<numerics::CubicSplineSolver>(x_pts);
-        spline_solver = solver_owner.get();
+        spline_solver = std::make_unique<numerics::CubicSplineSolver>(x_pts);
     }
 
     // clang-format off
@@ -272,6 +289,27 @@ cube_stats_along_z_v2(const Cube &cube,
     // clang-format on
     for (size_t i = 0; i < ncol; i++) {
         for (size_t j = 0; j < nrow; j++) {
+
+            // Check if traceidcode indicates dead trace (traceidcode == 2)
+            if (traceidcodes_(i, j) == 2) {
+                minv_(i, j) = numerics::QUIET_NAN;
+                maxv_(i, j) = numerics::QUIET_NAN;
+                meanv_(i, j) = numerics::QUIET_NAN;
+                varv_(i, j) = numerics::QUIET_NAN;
+                rmsv_(i, j) = numerics::QUIET_NAN;
+                maxabsv_(i, j) = numerics::QUIET_NAN;
+                meanabsv_(i, j) = numerics::QUIET_NAN;
+                sumabsv_(i, j) = numerics::QUIET_NAN;
+                maxposv_(i, j) = numerics::QUIET_NAN;
+                meanposv_(i, j) = numerics::QUIET_NAN;
+                sumposv_(i, j) = numerics::QUIET_NAN;
+                maxnegv_(i, j) = numerics::QUIET_NAN;
+                meannegv_(i, j) = numerics::QUIET_NAN;
+                sumnegv_(i, j) = numerics::QUIET_NAN;
+
+                continue;
+            }
+
             double upper_z = upper_(i, j);
             double lower_z = lower_(i, j);
 
@@ -294,36 +332,52 @@ cube_stats_along_z_v2(const Cube &cube,
                 continue;
             }
 
-            // Extract trace and perform interpolation
-            std::vector<double> trace(nlay);
-            for (size_t k = 0; k < nlay; ++k) {
-                trace[k] = cubev_(i, j, k);
+            // Extract trace using slice indices and perform interpolation
+            std::vector<double> trace(effective_nlay);
+            for (size_t k = 0; k < effective_nlay; ++k) {
+                trace[k] = cubev_(i, j, min_index + k);
             }
 
             std::vector<double> refined_trace;
             std::vector<double> refined_depth;
 
-            if (spline_solver && ndiv > 1 && nlay > 1) {
-                std::vector<double> x_pts(nlay);
+            if (spline_solver && ndiv > 1) {
+                // Use pre-computed spline solver
+                std::vector<double> x_pts(effective_nlay);
                 std::iota(x_pts.begin(), x_pts.end(), 0);
 
-                size_t num_new_points = (nlay - 1) * ndiv + 1;
+                size_t num_new_points = (effective_nlay - 1) * ndiv + 1;
                 std::vector<double> new_x_pts(num_new_points);
-                double step = static_cast<double>(nlay - 1) / (num_new_points - 1);
+                double step =
+                  static_cast<double>(effective_nlay - 1) / (num_new_points - 1);
                 for (size_t k = 0; k < num_new_points; ++k) {
                     new_x_pts[k] = k * step;
                 }
 
                 refined_trace = spline_solver->interpolate(x_pts, trace, new_x_pts);
-                // Depth is always linear
-                refined_depth = numerics::linear_interpolate(depth_, ndiv);
+                // Depth is always linear - slice the depth array first
+                std::vector<double> sliced_depth(effective_nlay);
+                for (size_t k = 0; k < effective_nlay; ++k) {
+                    sliced_depth[k] = depth_(min_index + k);
+                }
+                refined_depth = numerics::linear_interpolate(sliced_depth, ndiv);
 
-            } else if (ndiv > 1 && nlay > 1) {  // Linear interpolation
+            } else if (ndiv > 1 && effective_nlay > 1) {  // Linear interpolation
                 refined_trace = numerics::linear_interpolate(trace, ndiv);
-                refined_depth = numerics::linear_interpolate(depth_, ndiv);
+                // Slice the depth array first
+                std::vector<double> sliced_depth(effective_nlay);
+                for (size_t k = 0; k < effective_nlay; ++k) {
+                    sliced_depth[k] = depth_(min_index + k);
+                }
+                refined_depth = numerics::linear_interpolate(sliced_depth, ndiv);
             } else {  // No interpolation
                 refined_trace = trace;
-                refined_depth = numerics::linear_interpolate(depth_, 1);
+                // Slice the depth array
+                std::vector<double> sliced_depth(effective_nlay);
+                for (size_t k = 0; k < effective_nlay; ++k) {
+                    sliced_depth[k] = depth_(min_index + k);
+                }
+                refined_depth = numerics::linear_interpolate(sliced_depth, 1);
             }
 
             double min_val = std::numeric_limits<double>::max();
