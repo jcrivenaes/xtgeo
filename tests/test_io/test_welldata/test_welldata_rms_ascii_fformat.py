@@ -478,3 +478,121 @@ Poro UNK lin
     assert well1.n_records == well2.n_records
     np.testing.assert_array_almost_equal(well1.survey_x, well2.survey_x, decimal=4)
     np.testing.assert_array_almost_equal(well1.survey_z, well2.survey_z, decimal=4)
+
+
+def test_welldata_rms_ascii_well_name_with_spaces(tmp_path):
+    """Test reading RMS ASCII file with well name containing spaces."""
+    rms_content = """1.0
+Well with spaces in name
+25/11-25 A 465056.220 6556714.810 26.0000
+2
+Poro UNK lin
+Facies DISC 0 Shale 1 Sand
+465056.220 6556714.810 1000.0 0.25 0.0
+465056.320 6556714.910 1001.0 0.30 1.0
+465056.420 6556715.010 1002.0 0.28 1.0
+"""
+    rms_file = tmp_path / "well_with_spaces.rms_ascii"
+    rms_file.write_text(rms_content)
+
+    well = WellData.from_file(filepath=rms_file, fformat="rms_ascii")
+
+    # Verify the well name includes the space
+    assert well.name == "25/11-25 A"
+    assert well.n_records == 3
+    assert well.xpos == pytest.approx(465056.220)
+    assert well.ypos == pytest.approx(6556714.810)
+    assert well.zpos == pytest.approx(26.0)
+
+    # Verify data is correctly read
+    poro = well.get_log("Poro")
+    np.testing.assert_array_almost_equal(poro.values, [0.25, 0.30, 0.28])
+
+
+def test_welldata_rms_ascii_well_name_with_spaces_no_rkb(tmp_path):
+    """Test reading RMS ASCII file with well name containing spaces and no RKB."""
+    rms_content = """1.0
+Well with spaces, no RKB
+25/11-25 A 465056.220 6556714.810
+2
+Poro UNK lin
+Facies DISC 0 Shale 1 Sand
+465056.220 6556714.810 1000.0 0.25 0.0
+465056.320 6556714.910 1001.0 0.30 1.0
+465056.420 6556715.010 1002.0 0.28 1.0
+"""
+    rms_file = tmp_path / "well_with_spaces_no_rkb.rms_ascii"
+    rms_file.write_text(rms_content)
+
+    well = WellData.from_file(filepath=rms_file, fformat="rms_ascii")
+
+    # Verify the well name includes the space
+    assert well.name == "25/11-25 A"
+    assert well.n_records == 3
+    assert well.xpos == pytest.approx(465056.220)
+    assert well.ypos == pytest.approx(6556714.810)
+    assert well.zpos == pytest.approx(0.0)  # Default when RKB is missing
+
+    # Verify data is correctly read
+    poro = well.get_log("Poro")
+    np.testing.assert_array_almost_equal(poro.values, [0.25, 0.30, 0.28])
+
+
+def test_welldata_rms_ascii_well_name_multiple_spaces(tmp_path):
+    """Test reading RMS ASCII file with well name containing multiple spaces."""
+    rms_content = """1.0
+Well with multiple spaces
+North Sea Well 123 465000.0 6550000.0 15.5
+1
+Poro UNK lin
+465000.0 6550000.0 2000.0 0.22
+465001.0 6550001.0 2001.0 0.24
+"""
+    rms_file = tmp_path / "well_multi_spaces.rms_ascii"
+    rms_file.write_text(rms_content)
+
+    well = WellData.from_file(filepath=rms_file, fformat="rms_ascii")
+
+    # Verify the well name includes all spaces
+    assert well.name == "North Sea Well 123"
+    assert well.xpos == pytest.approx(465000.0)
+    assert well.ypos == pytest.approx(6550000.0)
+    assert well.zpos == pytest.approx(15.5)
+
+
+def test_welldata_rms_ascii_roundtrip_with_spaces_in_name(tmp_path):
+    """Test that well names with spaces survive roundtrip."""
+    # Create well with spaces in name
+    survey_x = np.array([100.0, 101.0, 102.0])
+    survey_y = np.array([200.0, 201.0, 202.0])
+    survey_z = np.array([1000.0, 1001.0, 1002.0])
+
+    from xtgeo.io.welldata._well_io import WellLog
+
+    poro_values = np.array([0.25, 0.30, 0.28])
+    poro_log = WellLog(name="Poro", values=poro_values, is_discrete=False)
+
+    well1 = WellData(
+        name="Well Name With Spaces",
+        xpos=100.0,
+        ypos=200.0,
+        zpos=5.0,
+        survey_x=survey_x,
+        survey_y=survey_y,
+        survey_z=survey_z,
+        logs=(poro_log,),
+    )
+
+    # Write to file
+    output_file = tmp_path / "spaces_roundtrip.rms_ascii"
+    well1.to_file(filepath=output_file, fformat="rms_ascii")
+
+    # Read back
+    well2 = WellData.from_file(filepath=output_file, fformat="rms_ascii")
+
+    # Verify name is preserved
+    assert well2.name == "Well Name With Spaces"
+    assert well2.xpos == pytest.approx(100.0)
+    assert well2.ypos == pytest.approx(200.0)
+    assert well2.zpos == pytest.approx(5.0)
+    assert well2.n_records == 3

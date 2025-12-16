@@ -69,21 +69,37 @@ def read_rms_ascii_well(filepath: FileLike) -> WellData:
             elif lnum == 3:
                 # Well header: name xpos ypos [rkb]
                 # rkb is optional, typically 0.0 or small value (Kelly Bushing)
+                # Note: well name can contain spaces (e.g., "25/11-25 A")
                 row = line.strip().split()
 
-                if len(row) == 4:
-                    # Format: name xpos ypos rkb
-                    wname: str = str(row[0])
-                    xpos: float = float(row[1])
-                    ypos: float = float(row[2])
-                    rkb: float = float(row[3])
-                elif len(row) == 3:
-                    # Format: name xpos ypos (no rkb)
-                    wname = row[0] if isinstance(row[0], str) else row[0].decode()
-                    xpos = float(row[1])
-                    ypos = float(row[2])
-                    rkb = 0.0
-                else:
+                if len(row) < 3:
+                    raise ValueError(f"Invalid well header format: {line}")
+
+                # Parse from the end: last 2-3 elements are numeric coordinates
+                # Try parsing with rkb first (last 3 values: xpos, ypos, rkb)
+                parsed = False
+                if len(row) >= 4:
+                    try:
+                        xpos: float = float(row[-3])
+                        ypos: float = float(row[-2])
+                        rkb: float = float(row[-1])
+                        wname: str = " ".join(row[:-3])
+                        parsed = True
+                    except ValueError:
+                        pass
+
+                # If that didn't work, try without rkb (last 2 values: xpos, ypos)
+                if not parsed:
+                    try:
+                        xpos = float(row[-2])
+                        ypos = float(row[-1])
+                        rkb = 0.0
+                        wname = " ".join(row[:-2])
+                        parsed = True
+                    except ValueError:
+                        pass
+
+                if not parsed:
                     raise ValueError(f"Invalid well header format: {line}")
 
             elif lnum == 4:
